@@ -20,6 +20,9 @@ The initial use case is following *Outbound Flight* in the Star Wars universe: i
 
 Every summary, entity description, and relationship should respect your progress. Later revelations must stay hidden even when the entire source has already been analyzed.
 
+See the [product flow and implementation roadmap](docs/product-flow.md) for the
+complete reading loop, build milestones, and first coding task.
+
 ## Starting scope
 
 - Ebook import and chapter detection.
