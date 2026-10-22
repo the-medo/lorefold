@@ -1,0 +1,20 @@
+# Local configuration and generated worktree state
+.env
+.env.*
+!.env.example
+.lorefold/
+.idea/
+
+# Dependencies, builds, and tooling caches
+node_modules/
+dist/
+coverage/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Private source material and database exports
+*.epub
+*.pdf
+*.dump
+*.sql.gz
