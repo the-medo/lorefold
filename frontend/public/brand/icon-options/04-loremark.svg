@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" color="#6b5b99" role="img" aria-labelledby="04-loremark-title 04-loremark-desc">
+  <title id="04-loremark-title">Lorefold — Loremark</title>
+  <desc id="04-loremark-desc">A compact LF monogram, folded together.</desc>
+  <path d="M11 10h10v33h32v9a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2Z" fill="currentColor"/>
+  <path d="M27 10h26v11H38v7h12v10H27Z" fill="currentColor" opacity=".68"/>
+  <path d="m43 10 10 11H43Z" fill="currentColor"/>
+</svg>

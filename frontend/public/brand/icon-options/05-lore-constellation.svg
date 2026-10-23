@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" color="#6b5b99" role="img" aria-labelledby="05-lore-constellation-title 05-lore-constellation-desc">
+  <title id="05-lore-constellation-title">Lorefold — Lore constellation</title>
+  <desc id="05-lore-constellation-desc">Stories and characters, connected.</desc>
+  <path d="m9 28 20 9v19L9 47Z" fill="currentColor" opacity=".42"/>
+  <path d="m35 37 20-9v19l-20 9Z" fill="currentColor"/>
+  <path d="m17 18 15-7 15 7-15 14Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="17" cy="18" r="4" fill="currentColor"/>
+  <circle cx="32" cy="10" r="4.5" fill="currentColor"/>
+  <circle cx="47" cy="18" r="4" fill="currentColor"/>
+  <circle cx="32" cy="32" r="3.5" fill="currentColor"/>
+</svg>

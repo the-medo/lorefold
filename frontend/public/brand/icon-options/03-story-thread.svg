@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" color="#6b5b99" role="img" aria-labelledby="03-story-thread-title 03-story-thread-desc">
+  <title id="03-story-thread-title">Lorefold — Story thread</title>
+  <desc id="03-story-thread-desc">A flowing “l”, following the story.</desc>
+  <path d="M23 43V20c0-12 17-12 17-1 0 13-25 17-25 27 0 10 15 11 25 1l11-11" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="51" cy="20" r="4" fill="currentColor" opacity=".5"/>
+</svg>

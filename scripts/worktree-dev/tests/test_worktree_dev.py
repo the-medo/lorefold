@@ -15,6 +15,7 @@ import unittest
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 REPO = SCRIPT_DIR.parents[1]
+sys.path.insert(0, str(SCRIPT_DIR))
 spec = importlib.util.spec_from_file_location("worktree_dev", SCRIPT_DIR / "worktree_dev.py")
 dev = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dev)
@@ -64,7 +65,8 @@ class WorktreeIntegrationTests(unittest.TestCase):
         self.base = Path(self.temporary.name)
         self.worktrees = []
         self.foreign = []
-        self.env = {**os.environ, "LOREFOLD_DEV_REGISTRY": str(self.base / "registry")}
+        self.env = {**os.environ, "LOREFOLD_DEV_REGISTRY": str(self.base / "registry"),
+                    "XDG_CONFIG_HOME": str(self.base / "config")}
         self.token = dev.digest(str(self.base))
         self.common = Path(execute(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=REPO).stdout.strip())
         self.addCleanup(self.cleanup)
@@ -141,7 +143,11 @@ class WorktreeIntegrationTests(unittest.TestCase):
         self.assertNotEqual(one["container"], two["container"])
         self.assertNotEqual(one["volume"], two["volume"])
         self.assertFalse(set(one["ports"].values()) & set(two["ports"].values()))
-        self.assertFalse(one["app_implemented"])
+        self.assertEqual(one["app_implemented"], (first / "backend/index.ts").is_file())
+        self.assertEqual(one["app_status"], "unavailable")
+        (first / "backend").mkdir(exist_ok=True)
+        (first / "backend/index.ts").touch(exist_ok=True)
+        self.assertTrue(self.status(first)["app_implemented"])
         self.assertEqual((first / ".env").read_text(), initial_env)
         state_a = json.loads((first / ".lorefold/state.json").read_text())
         state_b = json.loads((second / ".lorefold/state.json").read_text())
@@ -198,7 +204,7 @@ class WorktreeIntegrationTests(unittest.TestCase):
             result = self.cli(first, "up", check=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("port is occupied", result.stderr)
-        self.cli(first, "up")
+        self.cli(first, "setup")
         self.assertEqual(self.sql(first, "SELECT value FROM isolation_probe"), "first-only")
 
         # Simulate a conflicting resource name. Neither setup nor purge may touch it.
@@ -214,7 +220,7 @@ class WorktreeIntegrationTests(unittest.TestCase):
             self.assertIsNotNone(self.inspect("volume", one["volume"]))
         self.remove_foreign("container", one["container"])
         self.foreign.remove(("container", one["container"]))
-        self.cli(first, "up")
+        self.cli(first, "setup")
         self.assertEqual(self.sql(first, "SELECT value FROM isolation_probe"), "first-only")
 
         # Either state copy can restore the other without changing credentials/data.

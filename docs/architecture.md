@@ -14,7 +14,7 @@ Capacity still needs to be measured under real load.
 | Import processing | Separate TypeScript worker; durable jobs in PostgreSQL | Separate Coolify application |
 | Ebook files and extracted chapter text | Private object storage | Cloudflare R2 |
 | AI requests | Cloudflare AI Gateway → Workers AI or an external model chosen through evaluation | Cloudflare gateway; inference at the chosen provider |
-| Interactive graph | Sigma.js + Graphology | Browser |
+| Interactive graph | Three.js + OrbitControls | Browser |
 
 Use a separate PostgreSQL resource in Coolify for independent lifecycle and
 backups unless measured server usage warrants sharing the existing PostgreSQL
@@ -23,9 +23,9 @@ Do not share SWUBASE application tables, credentials, or migration history.
 
 The web app, database, and import worker are the three runtime services we operate.
 The worker can use the same application image with a different entry point.
-The runtime and PostgreSQL queue library are still implementation choices; start
-with the familiar Hono/TypeScript approach and verify the queue library against
-the selected Bun or Node runtime before pinning dependencies.
+Milestone 1 uses Node.js 24+, Hono, and TypeScript. The PostgreSQL queue library
+remains an implementation choice for milestone 2; verify it against Node before
+pinning the dependency.
 
 There is no requirement for Next.js, Vercel hosting, D1, Redis, or Cloudflare Queues.
 Cloudflare R2 and AI Gateway remain explicit parts of the chosen architecture.
@@ -74,9 +74,67 @@ and per-book cost before selecting the extraction model.
   R2 holds originals and extracted text; database backups are also necessary.
 - Local development has a separate PostgreSQL container and volume per Git worktree.
   See [local development](../scripts/worktree-dev/README.md).
-- The local provider contract defaults to local fixture files and mock AI; live
-  R2/AI calls will require explicit development configuration. These providers,
-  the app, authentication, schema, and worker are not implemented yet.
+- The application, Better Auth sign-in, and Drizzle schema/migrations are implemented.
+  Local sample data is seeded directly without a model. Original file uploads use
+  a development-only local storage adapter; R2/AI providers and the worker are not yet
+  implemented. Live calls will require explicit development configuration.
+
+## Milestone 1 implementation
+
+Hono serves `/api` and the built Vite frontend. During development, Vite proxies
+same-origin `/api` requests to the isolated backend. Better Auth uses the Drizzle
+adapter, HTTP-only sessions, and each worktree's cookie prefix. Public signup is
+disabled; a local provisioning command hashes the password and creates the user
+and credential account in one transaction. Sign-in is rate limited in-process;
+multi-instance rate limiting and trusted proxy configuration must be addressed
+before hosted deployment. There is no password reset/email delivery yet.
+
+Universes belong to a user and group books and reference documents. Books optionally
+belong to one universe; the full library includes all owned books. Composite foreign
+keys prevent assigning a book or uploaded resource to another owner's universe.
+The sample migration creates Bellweather and preserves existing reading progress.
+
+Uploads accept EPUB/PDF/TXT/Markdown books and PDF/TXT/Markdown documents, bounded
+to 25 MB, with basic container signatures checked before storage. The development
+adapter saves originals under `.lorefold/storage/uploads/` with random keys and
+private file permissions. The API authorizes every download and serves files as
+attachments with no-store and nosniff headers. Files are never executed, extracted,
+or served from the frontend's static directory. Failed database writes remove the
+new file. Production upload storage remains disabled until private R2 is connected;
+crash recovery and orphan reconciliation belong with that durable import workflow.
+An uploaded book has zero chapters and no generated recaps or graph. Reference
+documents do not become library books or contribute knowledge automatically.
+
+Books belong to a user. Every library, workspace, and progress query checks that
+ownership. Facts and relationships reference chapter-specific evidence with source
+quotes and an extraction version; appearances control the chapter graph scope.
+The workspace transaction reads a consistent database snapshot and uses
+`min(selected chapter, saved completed chapter, chapter count)` for the response.
+It filters facts, evidence, edges, recaps, source text, and chapter titles before
+serialization. It resolves the latest permitted label and cumulative permitted
+descriptions/aliases, and drops edges without visible endpoints. The chapter map
+includes entities appearing in that chapter and relationships evidenced there;
+story-so-far includes everything established through the cutoff.
+
+The synthetic seed is atomic and idempotent per owner, and never overwrites reader
+progress. Browser search/filtering operates only over the already restricted
+payload. API tests explicitly cover identity reveals, direct requests for later
+chapters, rewinds, ownership, and repeated migrations/seeds.
+
+## 3D story map
+
+Three.js renders a perspective scene with OrbitControls for mouse, touch, and
+keyboard navigation. A deterministic spring layout uses only visible entities and
+relationships from the authorized response. Search and type filters do not fetch
+hidden knowledge. Selecting a sphere, projected label, or entity-list item shares
+the evidence panel and highlights its immediate connections.
+
+The renderer loads on demand with the Story map tab. It draws only when the camera,
+selection, or viewport changes, caps device pixel ratio at two, honors reduced motion,
+and disposes GPU resources and listeners when unmounted or filtered. Context loss
+shows an accessible list fallback; restoration or retry rebuilds the scene. Layout
+is synchronous and intended for the small skeleton graph; large imported graphs
+will need performance measurement and possibly worker-based layout/level of detail.
 
 ## References
 

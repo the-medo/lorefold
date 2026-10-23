@@ -1,0 +1,55 @@
+{
+  "name": "lorefold",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "tsx watch backend/index.ts",
+    "dev:web": "vite --config frontend/vite.config.ts",
+    "build": "vite build --config frontend/vite.config.ts && tsc -p tsconfig.server.json",
+    "start": "node dist/server/backend/index.js",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "demo:setup": "tsx scripts/demo-setup.ts",
+    "user:create": "tsx scripts/create-user.ts",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test:browser": "playwright test",
+    "test:dev": "tsx --test --test-concurrency=1 tests/lifecycle/*.test.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "1.7.12",
+    "@hono/node-server": "2.1.5",
+    "better-auth": "1.7.12",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.13",
+    "lucide-react": "1.61.0",
+    "pg": "8.23.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.186.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "drizzle-kit": "0.31.11",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.12"
+    }
+  }
+}

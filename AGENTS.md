@@ -13,11 +13,14 @@ PostgreSQL + Drizzle on Coolify, a separate import worker with PostgreSQL-backed
 jobs, private Cloudflare R2 for ebooks/extracted text, and Cloudflare AI Gateway
 for Workers AI or a tested external model. Keep that split unless the user changes it.
 
-The repository currently contains documentation and working local infrastructure
-tooling only. App routes, UI, authentication, schema/migrations, import workers,
-mock providers, and production deployment files have not been implemented.
-Do not claim reserved app URLs, generated auth config, or provider variables mean
-those features work. Prefer a small foundation over unrelated service scaffolding.
+Milestone 1 is implemented: Node 24+, React/Vite, Hono, Better Auth, PostgreSQL/
+Drizzle migrations, and a deterministic three-chapter sample with recaps, saved
+progress, and a Three.js 3D map. Universes are the first page; My Library
+remains the complete book list. Private universes group books and uploaded reference
+documents. Development uploads save original files locally (25 MB maximum) and
+allow authorized downloads. EPUB extraction, workers, R2/AI providers, and production
+deployment are not implemented. Never display an upload as analyzed or readable
+chapters until extraction actually exists.
 
 ## Worktree development
 
@@ -36,11 +39,43 @@ scripts/worktree-dev/lorefold-worktree-dev status
 scripts/worktree-dev/lorefold-worktree-dev down
 ```
 
-At this stage `setup` and `up` both start the isolated PostgreSQL database and
-generate environment files. They do not start the future application. Execute
-commands with `lorefold-worktree-dev run -- ...` so worktree database/port/auth
-settings override inherited environment and root `.env`. `run` is foreground;
-stop its processes before stopping the database.
+`setup` prepares PostgreSQL and environment files. After installing dependencies,
+applying migrations, and seeding the demo, `up` starts a background systemd user
+service and the configured private browser route. Execute one-off commands with
+`lorefold-worktree-dev run -- ...` so worktree settings override inherited values.
+
+### Required remote preview setup
+
+The user opens apps from a different computer. Follow the stable private access
+pattern from [SWUBase](https://github.com/the-medo/swu-collection/blob/main/scripts/worktree-dev/README.md):
+
+- Reuse this machine's Lorefold access profile at
+  `${XDG_CONFIG_HOME:-~/.config}/lorefold/worktree-dev/access.json`. New worktrees
+  inherit it automatically. Keep it outside Git and never copy another app's secrets.
+- On this development host, the configured template is
+  `https://steamdeck.tail73a93e.ts.net:{frontend_port}` with Tailscale Serve.
+  If no profile exists, discover the host using `tailscale status --json`, then run
+  `configure-access --origin-template 'https://<this-host-dns>:{frontend_port}' --tailscale-serve`.
+  On a different host, use its own DNS name. See the local development guide.
+- For every new app/worktree, complete bootstrap → `npm ci` →
+  `run -- npm run db:migrate` → `run -- npm run demo:setup` → `up` → `status`.
+  On this host Node is at `/home/medo/dev/nodejs/bin`; add that directory to the
+  command's PATH if Node is missing. Do not change shell profiles.
+- Leave the app running in the background after handoff. After tests that stop
+  services, restore it with `up`. Report the **Browser URL** from `status`, and
+  verify the page, `/api/health`, real sign-in, session persistence, and an
+  authenticated write through that exact URL before calling a preview ready.
+- Use the stable HTTPS origin for both `APP_ORIGIN` and `BETTER_AUTH_URL`, an
+  explicit Vite hostname allowlist, same-origin `/api` proxying, and isolated auth
+  cookie prefixes. Do not solve origin errors with wildcards or disabled checks.
+- Tailscale access stays private. Keep application listeners on loopback. Never
+  use Funnel, bind databases publicly, reset all Serve mappings, or alter another
+  project's route. `down` removes only the current worktree's exact mapping.
+- Do not make a temporary IDE/SSH forwarded port such as `localhost:60204` the
+  normal handoff URL. The explicit loopback-origin option is a fallback only.
+- Background services survive terminal/chat closure and restart after failure;
+  they require the host and its user service manager to stay running. After a host
+  reboot, use `up`. This is a development preview, not production deployment.
 
 - Do not create ad-hoc fixed-name databases or reuse another worktree's URL.
 - Preserve an existing `.env`. The bootstrap creates a safe template only if absent.
@@ -51,8 +86,9 @@ stop its processes before stopping the database.
   in `status` and verify that destroying that worktree's data is intended.
 - `prune` is a dry run; `prune --yes` removes only labelled resources for deleted
   worktree directories. Never use global Docker pruning or remove foreign resources.
-- For future app startup, wire in the generated variables and strict ports as
-  described in the guide, and extend lifecycle tests before claiming app support.
+- Use `up` for user previews. `run -- npm run dev` is a foreground debugging
+  alternative; stop it before `up` or `down`. `status` reports app health and the
+  background service state as well as owned database resources.
 
 ## Source material and external services
 
@@ -62,10 +98,24 @@ Private R2 content and extracted text remain user-owned data. Local database
 isolation does not isolate cloud services: use development credentials and each
 worktree's R2 prefix for intentional live integration tests.
 
-Future local providers should default to local fixtures and deterministic mock AI.
-The environment template records that contract; these providers do not exist yet.
+The local file adapter uses `.lorefold/storage/uploads/` in development only;
+random storage keys and authenticated attachment downloads keep files private.
+Validate universe/book ownership on every read, assignment, upload, and download.
+Books have at most one universe; My Library includes assigned and unassigned books.
+Reference documents stay out of the book list. Keep universe membership separate
+from chapter knowledge: grouping sources must not expose cross-book spoilers.
+Future analysis providers should default to deterministic mock AI.
 Live AI/R2 activity requires explicit development configuration. Never put secrets
 in frontend `VITE_*` values.
+
+## Visual identity and map
+
+The selected brand icon is option 1, **Folded worlds**. Use
+`frontend/public/brand/lorefold.svg` in the app and favicon; the five editable SVG
+concepts and comparison page remain under `frontend/public/brand/icon-options/`.
+The story map is explicitly 3D, implemented with Three.js and OrbitControls.
+Preserve orbit, pan, zoom, accessible entity selection, the WebGL fallback, reduced
+motion, and GPU cleanup. Keep graph layout confined to the server-authorized payload.
 
 ## Knowledge and spoiler rules
 
@@ -83,7 +133,19 @@ changes, also run `scripts/worktree-dev/test-concurrent-worktrees.sh` with Docke
 Inspect the current worktree's `status` and exact ownership labels after provisioning.
 Do not touch SWUBASE or other projects' containers, volumes, or environment files.
 
-As application code is added, introduce its package lockfile, focused tests,
-type checks, and frontend build, and update these instructions with real commands.
-Run migrations only through the worktree environment against the intended local
-database. Report what was tested and distinguish implemented behavior from plans.
+Use `npm ci`, `npm run typecheck`, and `npm run build`. Run database commands only
+through the worktree launcher: `run -- npm run db:migrate`, `run -- npm test`, and
+`run -- npm run test:browser`. Browser tests use Playwright Chromium (install with
+`npx playwright install chromium`, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE`). Tests
+create and delete only their own users, never truncate shared tables. Keep spoiler,
+ownership, and authentication regression tests when changing those boundaries.
+After changing startup, strict ports, proxying, or process shutdown, use `down`
+then `setup` to leave only the database running, and run `run -- npm run test:dev`.
+Restore the preview with `up` before browser tests and handoff.
+
+`run -- npm run demo:setup` creates a development-only private account and original
+sample book; ignored `.lorefold/demo-account.json` contains its random password.
+Never print or commit it. `run -- npm run user:create` prompts for a private account;
+`run -- npm run db:seed -- email` seeds that account without changing progress.
+Generate migrations with `npm run db:generate -- --name descriptive_change`.
+Report what was tested and distinguish implemented behavior from plans.
