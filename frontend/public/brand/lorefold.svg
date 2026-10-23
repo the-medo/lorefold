@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" color="#6b5b99" role="img" aria-labelledby="01-folded-worlds-title 01-folded-worlds-desc">
+  <title id="01-folded-worlds-title">Lorefold — Folded worlds</title>
+  <desc id="01-folded-worlds-desc">An open book with an origami fold.</desc>
+  <path d="M8 15a3 3 0 0 1 4.2-2.8L29 20v33L10.5 45A4 4 0 0 1 8 41.3Z" fill="currentColor" opacity=".5"/>
+  <path d="m34 24 14 6 8-11v22.3a4 4 0 0 1-2.5 3.7L34 53Z" fill="currentColor"/>
+  <path d="m34 20 14-10v16Z" fill="currentColor" opacity=".78"/>
+  <path d="m51 11 5 3-5 7Z" fill="currentColor" opacity=".4"/>
+</svg>

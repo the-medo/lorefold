@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792694672828,
+      "tag": "0000_application_skeleton",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792695396769,
+      "tag": "0001_cascade_chapter_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792703980621,
+      "tag": "0002_universes_and_resources",
+      "breakpoints": true
+    }
+  ]
+}

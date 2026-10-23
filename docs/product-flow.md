@@ -1,7 +1,9 @@
 # Product flow and implementation roadmap
 
-This is the proposed build plan. The repository currently contains documentation
-and local development tooling; the application features below are not implemented.
+This is the build plan. Milestone 1 is implemented with an original three-chapter
+sample book. Universe collections and private local file uploads are also implemented;
+extraction and milestones 2–5 remain planned. See [local setup](../README.md#run-the-application-locally)
+to explore the application.
 The deployment and technology choices are recorded in [architecture.md](architecture.md).
 
 ## First-release goal
@@ -16,13 +18,30 @@ story-so-far graph.**
 
 ## User flow
 
-### 1. Open your library
+### 1. Open your universes
+
+Universes are the landing page after sign-in. Create a private universe such as
+Star Wars or Middle-earth, then add books and reference resources inside it.
+Each universe has a name, optional description, book collection, and other resources.
+The sample book belongs to the original Bellweather universe.
+
+**My Library** remains a separate page showing all the user's books, across every
+universe and including unassigned books. An unassigned book can be added to a
+universe without changing its reading progress. Each book has at most one universe.
+Reference documents appear only inside their universe.
 
 Each book shows your last completed chapter and a **Continue** button. Processing
 progress appears separately: “12/20 chapters analyzed” must never imply you have
 read them.
 
-### 2. Import an EPUB and check its chapters
+### 2. Upload sources, then import and check chapters
+
+Currently, users can upload books (EPUB, PDF, TXT, Markdown) and reference documents
+(PDF, TXT, Markdown), up to 25 MB each. The original file is stored privately and
+can be downloaded after authentication. Uploaded books also appear in My Library.
+These records show an uploaded state with zero chapters: extraction and analysis
+do not run yet. Development uses worktree-local storage; production private R2
+uploads remain part of the import milestone below.
 
 Upload the file, review the detected title and chapter list, and exclude things
 like copyright pages or appendices before analysis. Start with EPUB: it supplies
@@ -58,7 +77,8 @@ Each milestone should leave something usable and independently reviewable.
 
 | Milestone | What we build | What proves it works |
 | --- | --- | --- |
-| 1. Working application skeleton | React/Hono, database migrations, private sign-in, library and book workspace, deterministic sample data | Run locally and explore a synthetic three-chapter book with progress, recaps, and a small graph |
+| 1. Working application skeleton — implemented | React/Hono, database migrations, private sign-in, library and book workspace, deterministic sample data | Run locally and explore a synthetic three-chapter book with progress, recaps, and a small graph |
+| 1a. Universe collections — implemented | Universes landing page, creation, book assignment, private local book/document uploads and downloads | Create a world, upload sources, reload, and find its books in My Library |
 | 2. Real book import | Private R2 upload, EPUB extraction, chapter review, durable worker jobs | Import an EPUB, see its chapters, and resume processing after a worker restart |
 | 3. Reliable AI extraction | Gateway integration, structured recaps/entities/relationships, evidence validation, saved checkpoints | Process sample chapters with acceptable accuracy, spoiler handling, and measured cost |
 | 4. Complete reading experience | Saved progress, real graph data, both graph modes, filters, search, evidence panel | Complete the entire Outbound Flight companion flow |
@@ -111,15 +131,21 @@ Prioritize these additions:
 3. **Corrections:** fix mistaken character merges or unsupported relationships.
 4. **Audiobook bookmarks:** save a listening position and accommodate chapter
    numbering differences.
-5. **Multiple books and sources:** shared universes, cross-book graphs, then
-   transcripts and other formats.
+5. **Cross-source knowledge:** build shared entities and cross-book graphs on top
+   of universe collections, then support transcripts and other formats.
 
 Cross-book knowledge deserves its own phase: progress becomes a separate boundary
 for each source, and identity matching becomes more complicated.
 
-## First coding task
+## Implemented foundation
 
-Implement milestone 1: a running application with a synthetic three-chapter story,
-working progress controls, recaps, and a basic interactive graph. This gives us
-the actual Lorefold experience to evaluate while establishing the spoiler rules
-that everything else depends on.
+Milestone 1 provides **The Lantern at Bellweather**, private email/password sign-in
+with CLI-only account provisioning, persisted reading progress, chapter recaps,
+both graph scopes, entity filters/search, and evidence details. Source text and
+future chapter titles are also filtered on the server. An unread book starts at
+chapter 0; analysis is already complete and does not advance reading progress.
+
+The universe collection layer stores originals and groups sources without combining
+their knowledge graphs. The next milestone is real EPUB extraction. The sample seeds structured facts directly;
+it does not pretend to exercise an extraction model or background worker. Graph
+polish and real-source evaluation remain part of the later reading experience.

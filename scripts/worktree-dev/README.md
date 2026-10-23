@@ -1,14 +1,16 @@
 # Local worktree development
 
-This is working database/environment tooling for a repository that does not yet
-contain the application. It adapts SWUBASE's isolation and ownership conventions,
-without its production dump restore, Crossfire, remote access, or IDE integration.
+This tooling isolates the application's local PostgreSQL database and environment.
+It adapts SWUBase's isolation, ownership, and private Tailscale access conventions,
+without its production dump restore, Crossfire, or IDE integration.
 
 ## Requirements and quick start
 
 Linux or WSL, Bash, Python 3.10+, Git, and a running local Docker Engine are required.
 The Docker user must be able to create containers and volumes. PostgreSQL 16 runs
-in Docker; neither a host PostgreSQL installation nor Bun/Node is needed yet.
+in Docker; no host PostgreSQL installation is needed. The app requires Node.js 24+
+and npm; database/environment commands only require Python and Docker. Background
+`up` requires a systemd user manager; private remote access also requires Tailscale.
 
 From the checkout or linked Git worktree:
 
@@ -20,28 +22,76 @@ scripts/worktree-dev/lorefold-worktree-dev psql -- -c 'SELECT current_database()
 
 Bootstrap calls `setup`, which starts a new empty database or reuses the existing
 one. Docker pulls `postgres:16-alpine` if needed. No production data or credentials
-are downloaded. No application dependencies, schema migrations, R2 providers,
-mock AI implementation, API, frontend, or import worker exist at this stage.
+are downloaded. To prepare and start the application, continue with:
+
+```bash
+npm ci
+scripts/worktree-dev/lorefold-worktree-dev run -- npm run db:migrate
+scripts/worktree-dev/lorefold-worktree-dev run -- npm run demo:setup
+scripts/worktree-dev/lorefold-worktree-dev up
+```
+
+Use the **Browser URL** in `status` to match the auth origin. The generated
+demo credentials are in ignored `.lorefold/demo-account.json`; do not copy or commit
+them. `up` verifies the page and `/api/health`, which checks PostgreSQL connectivity.
+
+## Stable access from another computer
+
+Configure this once per development machine, using its DNS name from
+`tailscale status --json` (both computers must have Tailscale access):
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev configure-access \
+  --origin-template 'https://steamdeck.tail73a93e.ts.net:{frontend_port}' \
+  --tailscale-serve
+```
+
+The profile lives at `${XDG_CONFIG_HOME:-~/.config}/lorefold/worktree-dev/access.json`.
+Every new worktree inherits it and substitutes its reserved frontend port. Existing
+worktrees adopt changes on `down` then `up`; active services retain their current
+origin. `up` starts a session-independent systemd user service, checks local health,
+and creates only the matching private Tailscale Serve route. It also checks health
+through HTTPS. SWUBase and other apps' routes remain untouched. Funnel is not used.
+
+The same browser origin drives Better Auth, API origin checks, and Vite's hostname
+allowlist. No changing forwarded ports or per-worktree auth edits are required.
+API and database listeners remain on loopback. Each worktree has its own cookie
+prefix because browser cookies are scoped to hosts, not ports.
+
+Without a profile the default is `http://localhost:{frontend_port}`. To restore it:
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev configure-access \
+  --origin-template 'http://localhost:{frontend_port}'
+```
+
+The background service survives terminal/chat closure and restarts on failure.
+The host and user service manager must remain running; run `up` after a reboot.
+Logs are available with `journalctl --user -u <service_unit> -n 100`, using the
+`service_unit` reported by `status --json`. Node must be on PATH when invoking `up`;
+on the Steam Machine it is installed under `/home/medo/dev/nodejs/bin`.
 
 ## Lifecycle
 
 | Command | Behavior |
 | --- | --- |
 | `setup` | Create/reuse PostgreSQL, wait for an authenticated connection, generate env files |
-| `up` | Currently the same as `setup`; does not start an unimplemented app |
-| `status [--json]` | Report the current worktree's resources and reserved ports, without secrets |
+| `up` | Start database, background app, and configured private route; wait for health |
+| `configure-access --origin-template ... [--tailscale-serve]` | Save the machine default for new/stopped worktrees |
+| `status [--json]` | Report resources, browser URL, HTTP health, and background service state, without secrets |
 | `psql -- [arguments]` | Use the container's PostgreSQL client against this worktree's DB |
 | `run -- command ...` | Run a foreground command with development config and enforced worktree overrides |
 | `logs` | Last 100 lines of this database's logs |
-| `down` | Stop PostgreSQL and retain its data, credentials, and port reservations |
+| `down` | Stop the app, remove its exact private route, stop PostgreSQL; retain data and reservations |
 | `down --purge-data` | Delete this worktree's PostgreSQL container/volume, generated env, and reservations |
 | `prune` | Preview this repository's resources whose worktree directories no longer exist |
 | `prune --yes` | Remove the previewed stale resources after validating ownership again |
 
-`run` is a foreground launcher, not a background process supervisor. Stop your
-commands with Ctrl-C before `down`. Later app scaffolding must explicitly add
-application lifecycle and health checks; the current command never claims the
-reserved frontend/API URLs are live.
+`run -- npm run dev` remains a foreground debugging alternative; stop it with
+Ctrl-C before `up` or `down`. `npm run dev` supervises API and frontend children,
+terminates both when either exits, and refuses occupied ports. The background
+service additionally stops every process in its systemd control group on `down`.
+`status` probes the local API; `up` also verifies the configured private URL.
 
 `down --purge-data` retains the developer-authored `.env` and any local fixture
 files under `.lorefold/storage/`. It deliberately destroys the local database.
@@ -74,14 +124,14 @@ coordinate reserved application ports. Port ranges are:
 | Service | Loopback port range |
 | --- | --- |
 | PostgreSQL | 15432–15531 |
-| Future backend | 13000–13099 |
-| Future Vite frontend | 15173–15272 |
+| Backend | 13000–13099 |
+| Vite frontend | 15173–15272 |
 
 The allocator avoids other Lorefold reservations and current listeners. A
 reservation is not an OS-level socket lock: a different program can claim a
 stopped service's port. The database launcher refuses to change ports or stop
-that program; resolve the conflict and retry. Future app launchers must bind
-the assigned port strictly rather than silently finding another one.
+that program; resolve the conflict and retry. The app binds its assigned ports
+strictly rather than silently finding another one.
 
 State is saved in the registry and `.lorefold/state.json`, with restrictive file
 permissions. Either copy can recover the other during setup. If both are lost
@@ -99,13 +149,13 @@ before moving, or deliberately recover/export its data first.
 | `.env.worktree` | Generated, ignored; DB connection, backend port, origins, auth secret, cookie prefix |
 | `frontend/.env.worktree` | Generated, ignored; public Vite port/proxy settings only |
 | `.lorefold/postgres.env` | Generated, ignored; Docker database initialization credentials |
-| `.lorefold/storage/` | Ignored worktree-local fixture storage, reserved for future providers |
+| `.lorefold/storage/` | Ignored worktree-local storage; private original uploads live in `uploads/` |
 
 Do not copy generated files between worktrees. The launcher never reads another
 project's `.env`, changes shell profiles, or silently imports production settings.
 An existing `.env` is preserved byte-for-byte.
 
-Use `run` when invoking database migrations, future app commands, or other code:
+Use `run` when invoking database migrations, app commands, or other code:
 
 ```bash
 scripts/worktree-dev/lorefold-worktree-dev run -- python3 -c \
@@ -119,22 +169,33 @@ are parsed as data: shell substitution and variable expansion never execute.
 Supported dotenv syntax is `KEY=value`, optional `export`, single/double quotes,
 and comments; multiline values are not supported.
 
-Future application integration must honor:
+The application honors:
 
 - Backend `HOST`/`PORT` and frontend `VITE_HOST`/`VITE_PORT` (strict ports).
 - Vite's `/api` proxy using `VITE_API_PROXY_TARGET`, keeping requests same-origin.
-- `DATABASE_URL` in Drizzle and the worker.
+- `DATABASE_URL` in Drizzle. The future worker must use it too.
 - `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, and `AUTH_COOKIE_PREFIX`. Cookies are
   host-scoped rather than port-scoped, so the prefix must be configured in Better Auth.
-- Development `R2_KEY_PREFIX` and `LOREFOLD_LOCAL_STORAGE_DIR` for source isolation.
-- `IMPORT_CONCURRENCY=1` for the initial worker.
 
-The generated auth origin is `http://localhost:<frontend port>`. When social login
+Future providers must honor development `R2_KEY_PREFIX` and
+`LOREFOLD_LOCAL_STORAGE_DIR`; the initial worker must honor `IMPORT_CONCURRENCY=1`.
+
+The generated auth origin comes from the worktree's saved access profile. When social login
 is implemented, register that worktree's exact provider callback URL; generated
 credentials/origins do not constitute a working OAuth integration.
 
-`LOREFOLD_STORAGE_MODE=local` and `LOREFOLD_AI_MODE=mock` are future provider
-contracts, not implemented providers or a sandbox. To exercise real services
+For a temporary tunnel using the default HTTP loopback profile, put its exact URL
+in the worktree's developer-owned `.env`, for example
+`LOREFOLD_DEV_BROWSER_ORIGIN=http://localhost:60204`, then restart the app through
+`run -- npm run dev`. Prefer the stable private HTTPS profile for regular remote
+work. Secure cookies from an HTTPS profile are not an HTTP tunnel fallback.
+The application adds only that explicit HTTP loopback origin
+to both Better Auth and API mutation checks. The generated origin, bind ports,
+cookie prefix, and database isolation remain controlled by the launcher. This
+option is rejected outside a development worktree. Do not edit generated env files.
+
+`LOREFOLD_STORAGE_MODE=local` enables private original file uploads in development.
+`LOREFOLD_AI_MODE=mock` remains a future provider contract. To exercise real services
 later, use reviewed development credentials, a private development R2 bucket,
 and the worktree key prefix. Treat each live AI request as potentially billable.
 Never expose secrets through `VITE_*` variables or commit user ebooks.

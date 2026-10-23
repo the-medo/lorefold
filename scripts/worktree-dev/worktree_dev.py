@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import runtime
 
 
 IMAGE = "postgres:16-alpine"
@@ -158,6 +159,7 @@ class Worktrees:
             raise DevError("Invalid port reservations; refusing to alter resources.")
         if not all(re.fullmatch(r"[0-9a-f]{64}", state.get(key, "")) for key in ("password", "auth_secret")):
             raise DevError("Invalid generated credentials in local state.")
+        runtime.origin(state.get("access", {}), ports["frontend"])
 
     def load(self, required=True):
         shared = read_json(self.record) if self.record.exists() else None
@@ -231,7 +233,7 @@ class Worktrees:
 
     def generated_env(self, state):
         ports = state["ports"]
-        origin = f"http://localhost:{ports['frontend']}"
+        origin = runtime.origin(state.get("access", {}), ports["frontend"])
         return {
             "NODE_ENV": "development", "LOREFOLD_WORKTREE_ID": state["id"],
             "DATABASE_URL": f"postgresql://lorefold:{state['password']}@127.0.0.1:{ports['database']}/lorefold",
@@ -276,7 +278,8 @@ class Worktrees:
                 if self.inspect(kind, name) is not None:
                     raise DevError("Docker resources exist but local state is missing. Recover state before continuing.")
             state = {"version": 1, **self.expected, "image": IMAGE, "ports": self.reserve_ports(),
-                     "password": secrets.token_hex(32), "auth_secret": secrets.token_hex(32), "provisioned": False}
+                     "password": secrets.token_hex(32), "auth_secret": secrets.token_hex(32), "provisioned": False,
+                     "access": runtime.load_access()}
         # Validate both resources before making any changes, including restarting.
         container = self.owned(state, "container")
         volume = self.owned(state, "volume")
@@ -300,8 +303,12 @@ class Worktrees:
             # A reservation is not a listening socket. Fail without changing the port
             # if a different application claimed it while this DB was stopped.
             with socket.socket() as sock:
+                # Connections closed during down may still be in TIME_WAIT.
+                # Match Docker's reusable listener without accepting a live owner.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     sock.bind(("127.0.0.1", state["ports"]["database"]))
+                    sock.listen()
                 except OSError as exc:
                     raise DevError("Reserved database port is occupied. Stop its owner before restarting this DB.") from exc
             command(["docker", "start", state["container"]])
@@ -339,8 +346,12 @@ class Worktrees:
             data = {key: state[key] for key in ("id", "root", "container", "volume", "ports")}
             data.update(configured=True, database_state=container["State"]["Status"] if container else "missing",
                         volume_exists=volume is not None,
-                        app_origin=f"http://localhost:{state['ports']['frontend']}",
-                        app_implemented=False, environment_file=str(self.root / ".env.worktree"))
+                        app_origin=runtime.origin(state.get("access", {}), state['ports']['frontend']),
+                        app_implemented=(self.root / "backend/index.ts").is_file(),
+                        app_service=runtime.service(state), service_unit=runtime.unit(state),
+                        app_status="healthy" if runtime.healthy(f"http://127.0.0.1:{state['ports']['frontend']}/api/health") else "unavailable",
+                        access_profile=str(runtime.profile_path()),
+                        environment_file=str(self.root / ".env.worktree"))
         if as_json:
             print(json.dumps(data, indent=2))
         elif state is None:
@@ -348,14 +359,15 @@ class Worktrees:
         else:
             print(f"Worktree: {state['root']}\nDatabase: {state['container']} ({data['database_state']})")
             print(f"PostgreSQL: 127.0.0.1:{state['ports']['database']} / lorefold\nVolume: {state['volume']}")
-            print(f"Reserved API: http://127.0.0.1:{state['ports']['backend']}\nReserved frontend: {data['app_origin']}")
-            print("Application not scaffolded yet; these URLs are reserved, not live app services.")
+            print(f"Loopback API: http://127.0.0.1:{state['ports']['backend']}\nBrowser URL: {data['app_origin']}")
+            print(f"Application: {data['app_status']}; background service: {data['app_service']}")
             print("Environment: .env + generated .env.worktree (use the run command)")
 
     def down(self, state, purge=False, local=True):
         # Check every target before stopping/removing any resource.
         container = self.owned(state, "container")
         volume = self.owned(state, "volume")
+        runtime.stop(state)
         if container:
             if container["State"]["Running"]:
                 command(["docker", "stop", "--time", "10", container["Id"]])
@@ -383,6 +395,8 @@ class Worktrees:
         for state in candidates:
             self.owned(state, "container")
             self.owned(state, "volume")
+            runtime.service(state)
+            runtime.serve_state(state)
             print(f"Stale: {state['root']}\n  {state['container']}\n  {state['volume']}")
         if not candidates:
             print("No stale worktrees for this repository.")
@@ -399,21 +413,48 @@ class Worktrees:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
-    for name in ("setup", "up"):
-        sub.add_parser(name, help="Create/reuse and start this worktree's PostgreSQL; generate local env files.")
+    sub.add_parser("setup", help="Create/reuse PostgreSQL and generate local env files.")
+    sub.add_parser("up", help="Start PostgreSQL, a background app service, and configured private access.")
+    access = sub.add_parser("configure-access", help="Save this machine's default browser access for future worktrees.")
+    access.add_argument("--origin-template", required=True)
+    access.add_argument("--tailscale-serve", action="store_true")
     sub.add_parser("status", help="Show owned resources; never prints credentials.").add_argument("--json", action="store_true")
     sub.add_parser("logs", help="Show recent database logs.")
-    sub.add_parser("down", help="Stop PostgreSQL; keep data unless explicitly purged.").add_argument("--purge-data", action="store_true")
+    sub.add_parser("down", help="Stop this worktree's app, private route, and PostgreSQL; keep data.").add_argument("--purge-data", action="store_true")
     sub.add_parser("prune", help="List resources of deleted worktrees; dry-run by default.").add_argument("--yes", action="store_true")
     sub.add_parser("run", help="Run a foreground command with .env then worktree overrides.").add_argument("command", nargs=argparse.REMAINDER)
     sub.add_parser("psql", help="Connect to this worktree's PostgreSQL using the container client.").add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     workspace = Worktrees()
     launch = None
+    starting = None
     with workspace.lock():
+        if args.action == "configure-access":
+            profile = {"origin_template": args.origin_template, "tailscale_serve": args.tailscale_serve}
+            runtime.origin(profile, 15173)
+            runtime.check_access({"access": profile, "ports": {"frontend": 15173}}, check_route=False)
+            atomic_write(runtime.profile_path(), json.dumps(profile, indent=2) + "\n")
+            print(f"Saved access profile: {runtime.profile_path()}\nNew worktrees inherit it. Use down then up to update existing worktrees.")
+            return
         workspace.docker_ready()
         if args.action in ("setup", "up"):
-            workspace.status(workspace.setup())
+            state = workspace.setup()
+            if args.action == "up":
+                if runtime.service(state) not in ("active", "activating"):
+                    # Preserve active services' origins. Stopped worktrees adopt
+                    # the machine default without copying per-worktree secrets.
+                    mapping = runtime.serve_state(state)
+                    access = runtime.load_access()
+                    if access != state.get("access", {}) and mapping == "ready":
+                        raise DevError("Run down before switching this worktree's existing private route to another access profile.")
+                    state["access"] = access
+                    runtime.check_access(state)
+                    workspace.save(state)
+                    workspace.write_environment(state)
+                runtime.start(state)
+                starting = state
+            else:
+                workspace.status(state)
         elif args.action == "status":
             workspace.status(workspace.load(required=False), args.json)
         elif args.action == "prune":
@@ -440,6 +481,11 @@ def main():
                 env = {**os.environ, **parse_env(workspace.root / ".env"), **workspace.generated_env(state),
                        **{key: str(value) for key, value in workspace.frontend_env(state).items()}}
                 launch = (arguments, env)
+    if starting:
+        # The background launcher needs the registry lock to load its environment.
+        # Wait only after releasing it, and report success only after HTTP readiness.
+        runtime.wait_ready(starting)
+        workspace.status(starting)
     if launch:
         # Release the registry lock before running a potentially long-lived app.
         os.chdir(workspace.root)
@@ -449,7 +495,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (DevError, OSError, KeyError) as exc:
+    except (DevError, runtime.RuntimeError, OSError, KeyError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
