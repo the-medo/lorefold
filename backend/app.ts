@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
-import { auth, trustedOrigins } from "./auth.js";
+import { auth, signInProviders, trustedOrigins } from "./auth.js";
 import { getWorkspace, listBooks, saveProgress } from "./library.js";
 import { pool } from "./db/client.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
@@ -22,6 +22,7 @@ app.get("/api/health", async (c) => {
   await pool.query("select 1");
   return c.json({ status: "ok" });
 });
+app.get("/api/auth/providers", (c) => c.json(signInProviders));
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 app.use("/api/*", async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });

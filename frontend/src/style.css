@@ -319,6 +319,40 @@ button:not(.primary):not(.book-cover) {
 .signin-box form {
   margin-top: 34px;
 }
+.social-signin {
+  margin-top: 28px;
+}
+.google-signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid #747775;
+  border-radius: 7px;
+  background: white;
+  font-weight: 500;
+}
+.google-signin:hover:not(:disabled) {
+  background: #f8f9fa;
+}
+.signin-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.signin-divider::before,
+.signin-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
 .signin-box label {
   display: block;
   font-size: 12px;

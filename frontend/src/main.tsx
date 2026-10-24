@@ -69,11 +69,45 @@ function Loading() {
 }
 
 function SignIn({ onSignIn }: { onSignIn: () => void }) {
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (!code) return "";
+    if (code === "access_denied") return "Google sign-in was cancelled. Try again or use email.";
+    if (code === "signup_disabled" || code === "account_not_linked") return "Use the Google account with the same email as your Lorefold invitation, or sign in with email.";
+    if (code === "google_email_unverified") return "Use a Google account with a verified email address, or sign in with email.";
+    return "Google sign-in could not be completed. Please try again or use email.";
+  });
+  const [busy, setBusy] = useState<"email" | "google" | null>(null);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ google: boolean }>("/auth/providers", { signal: controller.signal })
+      .then((providers) => setGoogleEnabled(providers.google))
+      .catch(() => { /* Email remains available if provider discovery fails. */ });
+    return () => controller.abort();
+  }, []);
+  async function signInWithGoogle() {
+    setBusy("google");
+    setError("");
+    try {
+      const result = await api<{ url: string }>("/auth/sign-in/social", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "google",
+          callbackURL: "/",
+          errorCallbackURL: "/sign-in",
+          disableRedirect: true,
+        }),
+      });
+      window.location.assign(result.url);
+    } catch {
+      setError("Google sign-in could not be started. Please try again or use email.");
+      setBusy(null);
+    }
+  }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setBusy(true);
+    setBusy("email");
     setError("");
     const form = new FormData(event.currentTarget);
     try {
@@ -88,7 +122,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
   return (
@@ -122,6 +156,19 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
           <span className="eyebrow">A PLACE FOR YOUR STORIES</span>
           <h2>Welcome back.</h2>
           <p className="muted">Sign in to your private reading space.</p>
+          {googleEnabled && <div className="social-signin">
+            <button type="button" className="google-signin" onClick={signInWithGoogle} disabled={busy !== null}>
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65Z" />
+                <path fill="#FBBC05" d="M10.53 28.59A14.41 14.41 0 0 1 9.75 24c0-1.59.27-3.13.78-4.59l-7.98-6.19A23.87 23.87 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z" />
+              </svg>
+              {busy === "google" ? "Opening Google…" : "Continue with Google"}
+            </button>
+            <div className="signin-divider">or use email</div>
+          </div>}
+          {error && <ErrorMessage message={error} />}
           <form onSubmit={submit}>
             <label>
               Email address
@@ -143,9 +190,8 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
                 placeholder="Your password"
               />
             </label>
-            {error && <ErrorMessage message={error} />}
-            <button className="primary wide" disabled={busy}>
-              {busy ? "Signing in…" : "Open my space"}
+            <button className="primary wide" disabled={busy !== null}>
+              {busy === "email" ? "Signing in…" : "Open my space"}
               <ArrowRight size={17} />
             </button>
           </form>

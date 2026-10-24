@@ -89,6 +89,13 @@ and credential account in one transaction. Sign-in is rate limited in-process;
 multi-instance rate limiting and trusted proxy configuration must be addressed
 before hosted deployment. There is no password reset/email delivery yet.
 
+Optional Google sign-in uses Better Auth's OAuth code flow with state and PKCE.
+It links a verified Google email to an existing privately provisioned user;
+Google cannot create new users. Both login methods share the same user ID and
+ownership checks. Google credentials stay server-side, and the frontend queries
+only provider availability. See [Google sign-in](google-sign-in.md) for setup,
+account-linking assumptions, and live verification requirements.
+
 Universes belong to a user and group books and reference documents. Books optionally
 belong to one universe; the full library includes all owned books. Composite foreign
 keys prevent assigning a book or uploaded resource to another owner's universe.

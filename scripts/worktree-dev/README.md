@@ -193,9 +193,12 @@ The application honors:
 Future providers must honor development `R2_KEY_PREFIX` and
 `LOREFOLD_LOCAL_STORAGE_DIR`; the initial worker must honor `IMPORT_CONCURRENCY=1`.
 
-The generated auth origin comes from the worktree's saved access profile. When social login
-is implemented, register that worktree's exact provider callback URL; generated
-credentials/origins do not constitute a working OAuth integration.
+The generated auth origin comes from the worktree's saved access profile. For Google
+sign-in, register that worktree's exact Browser URL plus `/api/auth/callback/google`
+in a Web OAuth client, and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together
+in `.env`. Restart the service with `down` then `up` after changing credentials.
+See [Google sign-in setup](../../docs/google-sign-in.md). Generated worktree
+credentials/origins alone do not constitute a working OAuth integration.
 
 For a temporary tunnel using the default HTTP loopback profile, put its exact URL
 in the worktree's developer-owned `.env`, for example
