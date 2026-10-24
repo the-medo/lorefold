@@ -90,6 +90,12 @@ scripts/worktree-dev/lorefold-worktree-dev run -- npm run user:create
 scripts/worktree-dev/lorefold-worktree-dev run -- npm run db:seed -- you@example.com
 ```
 
+Invited users can also sign in with Google using the same email address once a
+Google web OAuth client is configured. Their existing library and progress are
+preserved. See [Google sign-in setup](docs/google-sign-in.md) for credentials,
+exact callback URLs, and the private account-linking policy. Email/password
+sign-in remains available when Google is not configured.
+
 The first page is **Universes**. Open **Bellweather**, then **The Lantern at
 Bellweather**, select Chapter 1 under **I've finished**, and
 save. Explore its recap, original sample text, and story map; select an entity for

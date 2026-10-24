@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
@@ -54,6 +55,87 @@ class EnvironmentTests(unittest.TestCase):
         self.assertNotEqual(first["id"], second["id"])
         self.assertNotEqual(first["id"], clone["id"])
         self.assertEqual(first["repo_id"], second["repo_id"])
+
+    def test_google_profile_copies_only_explicit_credentials_privately(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            source = Path(directory) / ".env"
+            values = {"GOOGLE_CLIENT_ID": "synthetic-client", "GOOGLE_CLIENT_SECRET": "synthetic # $HOME ' secret"}
+            source.write_text(dev.env_text({**values, "DATABASE_URL": "must-not-be-shared", "BETTER_AUTH_SECRET": "private-session-secret"}))
+            dev.configure_google(source)
+            self.assertEqual(dev.parse_env(dev.google_profile_path()), values)
+            self.assertEqual(dev.google_profile_path().stat().st_mode & 0o777, 0o600)
+            template = "# Local settings\nCUSTOM=preserved\nGOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n"
+            target = Path(directory) / "new.env"
+            target.write_text(dev.seed_google_credentials(template))
+            self.assertEqual(dev.parse_env(target), {"CUSTOM": "preserved", **values})
+
+    def test_invalid_google_configuration_preserves_the_previous_profile_without_leaking(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            source = Path(directory) / ".env"
+            source.write_text("GOOGLE_CLIENT_ID=synthetic-client\nGOOGLE_CLIENT_SECRET=synthetic-secret\n")
+            dev.configure_google(source)
+            original = dev.google_profile_path().read_bytes()
+            source.write_text("GOOGLE_CLIENT_SECRET=private-sensitive-value\n")
+            with self.assertRaises(dev.DevError) as error:
+                dev.configure_google(source)
+            self.assertNotIn("private-sensitive-value", str(error.exception))
+            self.assertEqual(dev.google_profile_path().read_bytes(), original)
+            dev.google_profile_path().write_text("DATABASE_URL=private-sensitive-value\n")
+            with self.assertRaises(dev.DevError) as error:
+                dev.seed_google_credentials("CUSTOM=preserved\n")
+            self.assertNotIn("private-sensitive-value", str(error.exception))
+
+    def test_absent_google_profile_leaves_template_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            template = "# Safe template\nGOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n"
+            self.assertEqual(dev.seed_google_credentials(template), template)
+
+
+class PortAllocationTests(unittest.TestCase):
+    def setUp(self):
+        self.workspace = object.__new__(dev.Worktrees)
+        self.workspace.expected = {"id": "0"}
+
+    def test_new_frontend_ports_stay_in_the_google_callback_range(self):
+        records = [
+            {"ports": {"database": 15432, "backend": 13000, "frontend": 15184}},
+            {"ports": {"database": 15487, "backend": 13055, "frontend": 15228}},
+        ]
+        with patch.object(self.workspace, "records", return_value=records), patch.object(dev.socket, "socket") as socket:
+            bind = socket.return_value.__enter__.return_value.bind
+            def busy(address):
+                if address[1] == 15185:
+                    raise OSError("Another process owns this port")
+            bind.side_effect = busy
+            ports = self.workspace.reserve_ports()
+        self.assertEqual(ports, {"database": 15433, "backend": 13001, "frontend": 15186})
+
+    def test_full_range_fails_instead_of_allocating_a_higher_port(self):
+        for reserved in (True, False):
+            with self.subTest(reserved=reserved):
+                records = [{"ports": {"frontend": port}} for port in range(15184, 15191)] if reserved else []
+                with patch.object(self.workspace, "records", return_value=records), patch.object(dev.socket, "socket") as socket:
+                    bind = socket.return_value.__enter__.return_value.bind
+                    def busy(address):
+                        if 15184 <= address[1] <= 15190:
+                            raise OSError("Another process owns this port")
+                    bind.side_effect = busy
+                    with self.assertRaisesRegex(dev.DevError, "No available frontend ports in 15184-15190"):
+                        self.workspace.reserve_ports()
+                    attempted = [call.args[0][1] for call in bind.call_args_list]
+                    self.assertFalse(any(15173 <= port <= 15272 and not 15184 <= port <= 15190 for port in attempted))
+
+    def test_existing_legacy_reservations_remain_manageable(self):
+        identity = dev.identity(Path("/test/checkout"), Path("/test/repository/.git"))
+        state = {"version": 1, **identity, "image": dev.IMAGE, "provisioned": True,
+                 "password": "a" * 64, "auth_secret": "b" * 64,
+                 "ports": {"database": 15432, "backend": 13000, "frontend": 15228}}
+        for port in (15173, 15184, 15190, 15228, 15265, 15272):
+            state["ports"]["frontend"] = port
+            self.workspace.validate(state, identity)
+        state["ports"]["frontend"] = 15273
+        with self.assertRaisesRegex(dev.DevError, "Invalid port reservations"):
+            self.workspace.validate(state, identity)
 
 
 @unittest.skipUnless(os.environ.get("LOREFOLD_DOCKER_TESTS") == "1", "opt-in Docker integration test")
@@ -131,6 +213,10 @@ class WorktreeIntegrationTests(unittest.TestCase):
 
     def test_concurrent_worktrees_preserve_isolation_and_cleanup_boundaries(self):
         first, second = self.worktrees
+        credentials_file = self.base / "google-source.env"
+        credentials_file.write_text("GOOGLE_CLIENT_ID=synthetic-client\nGOOGLE_CLIENT_SECRET=synthetic-secret\nDATABASE_URL=must-not-be-shared\n")
+        configured = self.cli(first, "configure-google", "--from-env", str(credentials_file))
+        self.assertNotIn("synthetic-secret", configured.stdout + configured.stderr)
         initial_env = "# Developer settings\nDATABASE_URL=postgresql://never-use.invalid/production\nCUSTOM=preserved\n"
         (first / ".env").write_text(initial_env)
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -143,12 +229,25 @@ class WorktreeIntegrationTests(unittest.TestCase):
         self.assertNotEqual(one["container"], two["container"])
         self.assertNotEqual(one["volume"], two["volume"])
         self.assertFalse(set(one["ports"].values()) & set(two["ports"].values()))
+        for status in (one, two):
+            self.assertGreaterEqual(status["ports"]["frontend"], 15184)
+            self.assertLessEqual(status["ports"]["frontend"], 15190)
         self.assertEqual(one["app_implemented"], (first / "backend/index.ts").is_file())
         self.assertEqual(one["app_status"], "unavailable")
         (first / "backend").mkdir(exist_ok=True)
         (first / "backend/index.ts").touch(exist_ok=True)
         self.assertTrue(self.status(first)["app_implemented"])
         self.assertEqual((first / ".env").read_text(), initial_env)
+        self.assertEqual(dev.parse_env(second / ".env")["GOOGLE_CLIENT_ID"], "synthetic-client")
+        self.assertEqual(dev.parse_env(second / ".env")["GOOGLE_CLIENT_SECRET"], "synthetic-secret")
+        self.assertNotIn("must-not-be-shared", (second / ".env").read_text())
+        self.assertEqual((second / ".env").stat().st_mode & 0o777, 0o600)
+        self.cli(second, "run", "--", sys.executable, "-c",
+                 "import os; assert os.environ['GOOGLE_CLIENT_ID']=='synthetic-client'; assert os.environ['GOOGLE_CLIENT_SECRET']=='synthetic-secret'")
+        for path in self.worktrees:
+            for generated in (".env.worktree", "frontend/.env.worktree", ".lorefold/postgres.env", ".lorefold/state.json"):
+                self.assertNotIn("synthetic-secret", (path / generated).read_text())
+            self.assertNotIn("synthetic-secret", self.cli(path, "status", "--json").stdout)
         state_a = json.loads((first / ".lorefold/state.json").read_text())
         state_b = json.loads((second / ".lorefold/state.json").read_text())
         self.assertNotEqual(state_a["password"], state_b["password"])

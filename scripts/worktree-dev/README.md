@@ -78,6 +78,7 @@ on the Steam Machine it is installed under `/home/medo/dev/nodejs/bin`.
 | `setup` | Create/reuse PostgreSQL, wait for an authenticated connection, generate env files |
 | `up` | Start database, background app, and configured private route; wait for health |
 | `configure-access --origin-template ... [--tailscale-serve]` | Save the machine default for new/stopped worktrees |
+| `configure-google --from-env .env` | Save only this app's development Google credentials for new `.env` files |
 | `status [--json]` | Report resources, browser URL, HTTP health, and background service state, without secrets |
 | `psql -- [arguments]` | Use the container's PostgreSQL client against this worktree's DB |
 | `run -- command ...` | Run a foreground command with development config and enforced worktree overrides |
@@ -125,7 +126,19 @@ coordinate reserved application ports. Port ranges are:
 | --- | --- |
 | PostgreSQL | 15432–15531 |
 | Backend | 13000–13099 |
-| Vite frontend | 15173–15272 |
+| Vite frontend (new reservations) | 15184–15190 |
+
+The seven frontend ports provide a fixed set of Google callback URLs to register.
+If all seven are reserved or listening, setup fails; it never expands the range.
+`down` preserves reservations, so stopping an app alone does not free its port.
+Reuse a configured worktree or deliberately release an unused reservation after
+reviewing its data. Never purge data just to obtain a port without authorization.
+
+Existing reservations from the previous frontend range (15173–15272), including
+URLs such as port 15228, remain valid for status, startup, and shutdown. They are
+preserved to avoid changing active previews, origins, or Google callbacks.
+Moving one into the new range requires a deliberate migration; do not edit its
+generated environment files or registry state by hand.
 
 The allocator avoids other Lorefold reservations and current listeners. A
 reservation is not an OS-level socket lock: a different program can claim a
@@ -145,7 +158,7 @@ before moving, or deliberately recover/export its data first.
 | File | Ownership |
 | --- | --- |
 | `.env.example` | Tracked, safe template; no real credentials |
-| `.env` | Developer-owned, ignored; copied from the template only when absent |
+| `.env` | Developer-owned, ignored; created from the template and optional shared Google profile only when absent |
 | `.env.worktree` | Generated, ignored; DB connection, backend port, origins, auth secret, cookie prefix |
 | `frontend/.env.worktree` | Generated, ignored; public Vite port/proxy settings only |
 | `.lorefold/postgres.env` | Generated, ignored; Docker database initialization credentials |
@@ -180,9 +193,12 @@ The application honors:
 Future providers must honor development `R2_KEY_PREFIX` and
 `LOREFOLD_LOCAL_STORAGE_DIR`; the initial worker must honor `IMPORT_CONCURRENCY=1`.
 
-The generated auth origin comes from the worktree's saved access profile. When social login
-is implemented, register that worktree's exact provider callback URL; generated
-credentials/origins do not constitute a working OAuth integration.
+The generated auth origin comes from the worktree's saved access profile. For Google
+sign-in, register that worktree's exact Browser URL plus `/api/auth/callback/google`
+in a Web OAuth client, and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` together
+in `.env`. Restart the service with `down` then `up` after changing credentials.
+See [Google sign-in setup](../../docs/google-sign-in.md). Generated worktree
+credentials/origins alone do not constitute a working OAuth integration.
 
 For a temporary tunnel using the default HTTP loopback profile, put its exact URL
 in the worktree's developer-owned `.env`, for example
@@ -199,6 +215,45 @@ option is rejected outside a development worktree. Do not edit generated env fil
 later, use reviewed development credentials, a private development R2 bucket,
 and the worktree key prefix. Treat each live AI request as potentially billable.
 Never expose secrets through `VITE_*` variables or commit user ebooks.
+
+## Shared Google development credentials
+
+Lorefold worktrees can reuse one development Google Web OAuth client. Save only
+its two credentials from an already configured Lorefold `.env`:
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev configure-google --from-env .env
+```
+
+The command writes `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to
+`${XDG_CONFIG_HOME:-~/.config}/lorefold/worktree-dev/google.env` with mode `0600`.
+Other values in the source file are ignored, and credentials are never printed.
+The profile stays outside Git and is separate from `access.json`.
+
+When bootstrap/setup creates a new root `.env`, it inserts this credential pair
+into the safe template. If there is no profile, the template is unchanged.
+An existing `.env` stays byte-for-byte unchanged, including blank Google values.
+Generated database/frontend environment files do not receive the OAuth credentials.
+A malformed or incomplete profile stops creation with a secret-free error.
+
+To configure this on the development host from the main checkout's credentials:
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev configure-google \\
+  --from-env /home/medo/dev/lorefold/.env
+```
+
+Every worktree still needs the Google sign-in implementation, its own invited user,
+and its exact Browser URL plus `/api/auth/callback/google` registered as a redirect
+URI on that client. New frontend ports are restricted to 15184–15190. Register
+all seven complete callback URLs once on the development client. Older worktrees
+that retain ports outside this range still need their existing callback registered
+until their URLs are deliberately migrated.
+
+Changing the shared profile affects newly created `.env` files only. For rotation,
+update existing worktrees' two Google values explicitly and restart with `down`
+then `up`. Never share generated DB passwords, session secrets, cookie prefixes,
+other providers' credentials, or production configuration through this profile.
 
 ## Working in another worktree
 
