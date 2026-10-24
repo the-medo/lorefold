@@ -245,10 +245,11 @@ class Worktrees:
             states.append(state)
         return states
 
-    def reserve_ports(self):
+    def reserve_ports(self, names=None):
         used = {port for state in self.records() for port in state["ports"].values()}
         ports = {}
-        for key, (low, high) in PORT_RANGES.items():
+        for key in PORT_RANGES if names is None else names:
+            low, high = PORT_RANGES[key]
             width = high - low + 1
             start = int(self.expected["id"], 16) % width
             for offset in range(width):
@@ -266,6 +267,36 @@ class Worktrees:
             else:
                 raise DevError(f"No available {key} ports in {low}-{high}. Reuse an existing worktree or explicitly release an unused reservation; the range will not be expanded.")
         return ports
+
+    def migrate_frontend_port(self, state):
+        # Caller holds the registry lock. Keep database identity/data and all secrets.
+        if runtime.service(state) not in ("inactive", "failed", "missing"):
+            raise DevError("Run down before migrating the frontend port.")
+        if runtime.serve_state(state) not in ("missing", "disabled"):
+            raise DevError("Run down to remove the old private route before migrating.")
+        if not self.owned(state, "container") or not self.owned(state, "volume"):
+            raise DevError("Database resources are missing; recover them before migrating.")
+        for name in ("backend", "frontend"):
+            with socket.socket() as listener:
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    listener.bind(("127.0.0.1", state["ports"][name]))
+                    listener.listen()
+                except OSError as exc:
+                    raise DevError("Stop foreground app processes before migrating the frontend port.") from exc
+        old = state["ports"]["frontend"]
+        low, high = PORT_RANGES["frontend"]
+        if low <= old <= high:
+            return state
+        port = self.reserve_ports(("frontend",))["frontend"]
+        updated = {**state, "ports": {**state["ports"], "frontend": port}}
+        runtime.check_access(updated)
+        if runtime.serve_state(updated) not in ("missing", "disabled"):
+            raise DevError("The new frontend port already has a private route; refusing to adopt it.")
+        self.validate(updated, self.expected)
+        self.save(updated)
+        self.write_environment(updated)
+        return updated
 
     def save(self, state):
         content = json.dumps(state, indent=2) + "\n"
@@ -457,6 +488,7 @@ def main():
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("setup", help="Create/reuse PostgreSQL and generate local env files.")
     sub.add_parser("up", help="Start PostgreSQL, a background app service, and configured private access.")
+    sub.add_parser("migrate-frontend-port", help="Move a stopped legacy preview into the current frontend port range, preserving data.")
     access = sub.add_parser("configure-access", help="Save this machine's default browser access for future worktrees.")
     access.add_argument("--origin-template", required=True)
     access.add_argument("--tailscale-serve", action="store_true")
@@ -511,6 +543,9 @@ def main():
             state = workspace.load()
             if args.action == "down":
                 workspace.down(state, args.purge_data)
+            elif args.action == "migrate-frontend-port":
+                updated = workspace.migrate_frontend_port(state)
+                print(f"Frontend port: {state['ports']['frontend']} -> {updated['ports']['frontend']}. Database and credentials preserved. Run up to restart.")
             elif args.action == "logs":
                 if not workspace.owned(state, "container"):
                     raise DevError("Database container is missing.")
