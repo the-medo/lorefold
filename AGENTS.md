@@ -59,7 +59,11 @@ development worktrees. The private, machine-local profile is
   environment file. Do not overwrite the shared profile with test fixtures.
 - New worktrees must contain the Google sign-in implementation. Register each exact
   Browser URL plus `/api/auth/callback/google` on the same Google Web OAuth client.
-  Ports are allocated within 15173–15272 and are not necessarily consecutive.
+  New frontend/browser ports must be in **15184–15190** only. Do not expand this
+  range or choose a higher port when it is full; reuse an existing worktree or
+  deliberately release an unused reservation. `down` preserves reservations.
+  Existing older reservations outside this range remain manageable; migrate
+  their URLs deliberately rather than editing state or interrupting running previews.
 - Keep per-worktree database credentials, auth/session secrets, cookie prefixes,
   and origins isolated. This sharing is limited to the two Google development
   values; it does not authorize using another project's or production credentials.

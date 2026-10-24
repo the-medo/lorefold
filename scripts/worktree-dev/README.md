@@ -126,7 +126,19 @@ coordinate reserved application ports. Port ranges are:
 | --- | --- |
 | PostgreSQL | 15432–15531 |
 | Backend | 13000–13099 |
-| Vite frontend | 15173–15272 |
+| Vite frontend (new reservations) | 15184–15190 |
+
+The seven frontend ports provide a fixed set of Google callback URLs to register.
+If all seven are reserved or listening, setup fails; it never expands the range.
+`down` preserves reservations, so stopping an app alone does not free its port.
+Reuse a configured worktree or deliberately release an unused reservation after
+reviewing its data. Never purge data just to obtain a port without authorization.
+
+Existing reservations from the previous frontend range (15173–15272), including
+URLs such as port 15228, remain valid for status, startup, and shutdown. They are
+preserved to avoid changing active previews, origins, or Google callbacks.
+Moving one into the new range requires a deliberate migration; do not edit its
+generated environment files or registry state by hand.
 
 The allocator avoids other Lorefold reservations and current listeners. A
 reservation is not an OS-level socket lock: a different program can claim a
@@ -230,8 +242,10 @@ scripts/worktree-dev/lorefold-worktree-dev configure-google \\
 
 Every worktree still needs the Google sign-in implementation, its own invited user,
 and its exact Browser URL plus `/api/auth/callback/google` registered as a redirect
-URI on that client. Port allocation can choose any available port in 15173–15272;
-pre-registering only the next few numbers does not cover every new worktree.
+URI on that client. New frontend ports are restricted to 15184–15190. Register
+all seven complete callback URLs once on the development client. Older worktrees
+that retain ports outside this range still need their existing callback registered
+until their URLs are deliberately migrated.
 
 Changing the shared profile affects newly created `.env` files only. For rotation,
 update existing worktrees' two Google values explicitly and restart with `down`

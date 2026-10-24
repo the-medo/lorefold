@@ -91,6 +91,53 @@ class EnvironmentTests(unittest.TestCase):
             self.assertEqual(dev.seed_google_credentials(template), template)
 
 
+class PortAllocationTests(unittest.TestCase):
+    def setUp(self):
+        self.workspace = object.__new__(dev.Worktrees)
+        self.workspace.expected = {"id": "0"}
+
+    def test_new_frontend_ports_stay_in_the_google_callback_range(self):
+        records = [
+            {"ports": {"database": 15432, "backend": 13000, "frontend": 15184}},
+            {"ports": {"database": 15487, "backend": 13055, "frontend": 15228}},
+        ]
+        with patch.object(self.workspace, "records", return_value=records), patch.object(dev.socket, "socket") as socket:
+            bind = socket.return_value.__enter__.return_value.bind
+            def busy(address):
+                if address[1] == 15185:
+                    raise OSError("Another process owns this port")
+            bind.side_effect = busy
+            ports = self.workspace.reserve_ports()
+        self.assertEqual(ports, {"database": 15433, "backend": 13001, "frontend": 15186})
+
+    def test_full_range_fails_instead_of_allocating_a_higher_port(self):
+        for reserved in (True, False):
+            with self.subTest(reserved=reserved):
+                records = [{"ports": {"frontend": port}} for port in range(15184, 15191)] if reserved else []
+                with patch.object(self.workspace, "records", return_value=records), patch.object(dev.socket, "socket") as socket:
+                    bind = socket.return_value.__enter__.return_value.bind
+                    def busy(address):
+                        if 15184 <= address[1] <= 15190:
+                            raise OSError("Another process owns this port")
+                    bind.side_effect = busy
+                    with self.assertRaisesRegex(dev.DevError, "No available frontend ports in 15184-15190"):
+                        self.workspace.reserve_ports()
+                    attempted = [call.args[0][1] for call in bind.call_args_list]
+                    self.assertFalse(any(15173 <= port <= 15272 and not 15184 <= port <= 15190 for port in attempted))
+
+    def test_existing_legacy_reservations_remain_manageable(self):
+        identity = dev.identity(Path("/test/checkout"), Path("/test/repository/.git"))
+        state = {"version": 1, **identity, "image": dev.IMAGE, "provisioned": True,
+                 "password": "a" * 64, "auth_secret": "b" * 64,
+                 "ports": {"database": 15432, "backend": 13000, "frontend": 15228}}
+        for port in (15173, 15184, 15190, 15228, 15265, 15272):
+            state["ports"]["frontend"] = port
+            self.workspace.validate(state, identity)
+        state["ports"]["frontend"] = 15273
+        with self.assertRaisesRegex(dev.DevError, "Invalid port reservations"):
+            self.workspace.validate(state, identity)
+
+
 @unittest.skipUnless(os.environ.get("LOREFOLD_DOCKER_TESTS") == "1", "opt-in Docker integration test")
 class WorktreeIntegrationTests(unittest.TestCase):
     def setUp(self):
@@ -182,6 +229,9 @@ class WorktreeIntegrationTests(unittest.TestCase):
         self.assertNotEqual(one["container"], two["container"])
         self.assertNotEqual(one["volume"], two["volume"])
         self.assertFalse(set(one["ports"].values()) & set(two["ports"].values()))
+        for status in (one, two):
+            self.assertGreaterEqual(status["ports"]["frontend"], 15184)
+            self.assertLessEqual(status["ports"]["frontend"], 15190)
         self.assertEqual(one["app_implemented"], (first / "backend/index.ts").is_file())
         self.assertEqual(one["app_status"], "unavailable")
         (first / "backend").mkdir(exist_ok=True)
