@@ -130,6 +130,21 @@ chapters, rewinds, ownership, and repeated migrations/seeds.
 
 ## 3D story map
 
+The universe detail endpoint reads membership, progress, and graph knowledge in one
+repeatable-read transaction. It reuses the book graph reader with a separate cutoff
+of `min(saved completed chapter, chapter count)` for each owned member book. It
+returns only the permitted story-so-far entities and relationships, with book IDs
+for provenance and namespaced entity, relationship, and evidence IDs to prevent
+collisions. Cross-book identity resolution is not inferred from matching names.
+Unread books, pending uploads, and unanalyzed reference documents add no knowledge.
+
+The universe view reuses the Three.js renderer and evidence panel. Source checkboxes
+filter only this authorized payload, including the entity list and details, and
+persist exclusions in local browser storage per universe. Uploaded books appear
+once as book sources; reference documents are selectable but explicitly pending.
+Source selection changes neither progress nor membership. Returning focus to the
+universe re-fetches its snapshot and clears stale knowledge while loading.
+
 Three.js renders a perspective scene with OrbitControls for mouse, touch, and
 keyboard navigation. A deterministic spring layout uses only visible entities and
 relationships from the authorized response. Search and type filters do not fetch

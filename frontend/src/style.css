@@ -1832,3 +1832,36 @@ progress::-moz-progress-bar {
   .graph-wrap:fullscreen .map-hint { bottom: 55px; }
   .map-selection { top: 38px; }
 }
+
+.universe-map { margin: 32px 0 42px; }
+.universe-map > .section-toolbar { margin-bottom: 20px; gap: 20px; }
+.universe-map h2 { display: flex; align-items: center; gap: 10px; }
+.universe-map .section-toolbar p { font-size: 13px; margin-top: 7px; }
+.universe-map-boundary { display: flex; align-items: center; gap: 7px; color: #69785f; font-size: 12px; }
+.universe-map-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 12px; background: var(--paper); overflow: hidden; }
+.map-sources { border: 0; border-right: 1px solid var(--line); min-width: 0; padding: 24px 18px; margin: 0; background: #f7f5f9; }
+.map-sources legend { float: left; width: 100%; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.map-sources > .muted { clear: both; font-size: 12px; }
+.map-source-actions { display: flex; gap: 18px; font-size: 12px; margin: 16px 0; }
+.map-source { display: flex; align-items: flex-start; gap: 9px; padding: 16px 0; cursor: pointer; border-top: 1px solid var(--line); }
+.map-source input { accent-color: var(--purple); margin-top: 3px; flex: 0 0 auto; }
+.map-source > svg { color: var(--purple); flex-shrink: 0; margin-top: 2px; }
+.map-source > span { min-width: 0; overflow-wrap: anywhere; }
+.map-source strong { font-size: 12px; font-weight: 550; display: block; }
+.map-source small { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.map-source-note { font-size: 11px; color: var(--muted); margin-top: 16px; }
+.universe-map-content { padding: 22px; min-width: 0; }
+.universe-map-content > .search { width: min(100%, 340px); }
+.universe-map-content > .search input { width: 100%; min-width: 0; }
+.universe-map-content .entity-list button { text-align: left; min-width: 0; max-width: 100%; }
+.universe-map-content .entity-list span { overflow-wrap: anywhere; }
+.universe-map-content .entity-list small { display: block; font-size: 9px; color: var(--muted); margin-top: 3px; }
+.universe-map-content > .details { position: static; width: 100%; border: 1px solid var(--line); border-radius: 8px; margin-top: 22px; box-shadow: none; overflow-wrap: anywhere; }
+.universe-map-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; text-align: center; padding: 28px; color: var(--muted); }
+.universe-map-empty p { max-width: 390px; font-size: 13px; }
+@media (max-width: 850px) {
+  .universe-map-layout { grid-template-columns: 1fr; }
+  .map-sources { border-right: 0; border-bottom: 1px solid var(--line); }
+  .universe-map-content { padding: 16px; }
+  .universe-map > .section-toolbar { flex-wrap: wrap; }
+}

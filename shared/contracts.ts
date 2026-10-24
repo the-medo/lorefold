@@ -16,6 +16,11 @@ export type Relationship = {
   chapter: number;
   evidence: Evidence;
 };
+export type Graph = { entities: Entity[]; relationships: Relationship[] };
+export type UniverseGraph = {
+  entities: (Entity & { bookId: string })[];
+  relationships: (Relationship & { bookId: string })[];
+};
 export type Book = {
   id: string;
   title: string;
@@ -46,6 +51,7 @@ export type UniverseWorkspace = {
   universe: Universe;
   books: Book[];
   resources: Resource[];
+  graph: UniverseGraph;
 };
 export type Workspace = {
   book: Book;
@@ -59,5 +65,5 @@ export type Workspace = {
     recap: string;
     developments: string[];
   } | null;
-  graph: { entities: Entity[]; relationships: Relationship[] };
+  graph: Graph;
 };

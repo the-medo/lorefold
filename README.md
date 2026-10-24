@@ -119,6 +119,16 @@ all your books; unassigned books can be added to a universe without changing pro
 Uploads are stored locally in this development worktree. Chapter extraction and
 AI analysis are not available yet, so uploaded books show an explicit pending state.
 
+Each universe also has a **Universe map**, using the same interactive 3D map as
+the book view. It combines story-so-far knowledge through each book's own saved
+finished chapter. Use **Included sources** to select or deselect books and reference
+documents; choices are remembered in this browser without changing reading progress
+or universe membership. Search, entity types, and evidence remain available, with
+the originating book shown in the entity list and evidence panel. Unread books and
+pending uploads contribute no knowledge. Reference documents remain pending until
+analysis is implemented. Entities stay separate per book; matching names alone do
+not establish a shared identity across stories.
+
 The sample content is original synthetic fiction seeded transactionally in PostgreSQL.
 No R2, chapter extraction, model, or external AI calls are used. Processing progress is
 displayed separately from reading progress. The API owns the spoiler boundary;

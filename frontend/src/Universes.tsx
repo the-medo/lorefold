@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { ArrowLeft, ArrowRight, BookOpen, Check, Download, FileText, Globe2, Library, Plus, Search, Upload, X } from "lucide-react";
 import type { Book, Universe, UniverseWorkspace } from "../../shared/contracts.js";
 import { api } from "./api.js";
+import { UniverseMap } from "./UniverseMap.js";
 import { BookCard } from "./Books.js";
 
 function ErrorNote({ error }: { error: string }) {
@@ -149,7 +150,12 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
   const [modal, setModal] = useState<"upload" | "library" | null>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    const controller = new AbortController(); setError("");
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setError(""); setData(null);
     api<UniverseWorkspace>(`/universes/${encodeURIComponent(id)}`, { signal: controller.signal }).then(setData)
       .catch((e) => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
@@ -164,6 +170,7 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
       <div className="universe-intro"><div className="page-intro"><span className="eyebrow">YOUR UNIVERSE</span><h1>{data.universe.name}</h1><p className="muted">{data.universe.description || "Gather the stories and sources that make this world your own."}</p></div>
         <button className="primary" onClick={() => setModal("upload")}><Upload size={17} />Upload resource</button></div>
       {notice && <p className="success-note" role="status"><Check size={16} />{notice}</p>}
+      <UniverseMap key={data.universe.id} data={data} />
       <div className="section-toolbar"><h2>Books <span className="count">{data.books.length}</span></h2><button className="text-button" onClick={() => setModal("library")}><Library size={16} />Add from My library</button></div>
       {data.books.length ? <div className="books-grid">{data.books.map((book) => <BookCard key={book.id} book={book} openBook={(id) => navigate(`/books/${encodeURIComponent(id)}`)} />)}</div>
         : <div className="collection-empty"><BookOpen size={28} /><div><h3>The first story starts here.</h3><p>Upload a book or add one from your library.</p></div><button className="secondary" onClick={() => setModal("upload")}>Upload a book</button></div>}
