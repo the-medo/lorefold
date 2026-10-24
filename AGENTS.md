@@ -44,6 +44,29 @@ applying migrations, and seeding the demo, `up` starts a background systemd user
 service and the configured private browser route. Execute one-off commands with
 `lorefold-worktree-dev run -- ...` so worktree settings override inherited values.
 
+### Shared Google development credentials
+
+This machine's Lorefold Google OAuth client is intentionally reused across Lorefold
+development worktrees. The private, machine-local profile is
+`${XDG_CONFIG_HOME:-~/.config}/lorefold/worktree-dev/google.env`.
+
+- Bootstrap/setup seeds only `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from that
+  profile when creating a new root `.env`. Existing `.env` files are preserved.
+- If the profile is missing, save the approved Lorefold development credentials
+  from a configured checkout with `configure-google --from-env /path/to/lorefold/.env`.
+  On this host the main checkout is `/home/medo/dev/lorefold`. Read values as data;
+  never print them, put them in command arguments, commit them, or copy a whole
+  environment file. Do not overwrite the shared profile with test fixtures.
+- New worktrees must contain the Google sign-in implementation. Register each exact
+  Browser URL plus `/api/auth/callback/google` on the same Google Web OAuth client.
+  Ports are allocated within 15173–15272 and are not necessarily consecutive.
+- Keep per-worktree database credentials, auth/session secrets, cookie prefixes,
+  and origins isolated. This sharing is limited to the two Google development
+  values; it does not authorize using another project's or production credentials.
+- To rotate credentials, update the approved source and run `configure-google`
+  again. Existing worktrees require an explicit update of those two `.env` values
+  and a restart with `down` then `up`; setup never overwrites them.
+
 ### Required remote preview setup
 
 The user opens apps from a different computer. Follow the stable private access

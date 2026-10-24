@@ -102,6 +102,44 @@ def env_text(values):
     return MARKER + "".join(f"{key}={shlex.quote(str(value))}\n" for key, value in values.items())
 
 
+GOOGLE_KEYS = ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")
+
+
+def google_profile_path():
+    return runtime.profile_path().with_name("google.env")
+
+
+def google_credentials(values):
+    credentials = {key: values.get(key, "").strip() for key in GOOGLE_KEYS}
+    if not all(credentials.values()):
+        raise DevError("Set both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET before configuring shared Google sign-in.")
+    return credentials
+
+
+def configure_google(source):
+    # Explicit opt-in, restricted to this app's two development OAuth values.
+    # Database, session, cloud provider, and other application secrets stay local.
+    credentials = google_credentials(parse_env(source))
+    atomic_write(google_profile_path(), env_text(credentials))
+
+
+def seed_google_credentials(template):
+    profile = google_profile_path()
+    if not profile.exists():
+        return template
+    values = parse_env(profile)
+    if set(values) != set(GOOGLE_KEYS):
+        raise DevError("The shared Google profile must contain only GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
+    for key, value in google_credentials(values).items():
+        assignment = f"{key}={shlex.quote(value)}"
+        pattern = rf"(?m)^[ \t]*(?:export[ \t]+)?{key}[ \t]*=[^\r\n]*"
+        if re.search(pattern, template):
+            template = re.sub(pattern, lambda match: assignment, template)
+        else:
+            template = template.rstrip("\n") + "\n" + assignment + "\n"
+    return template
+
+
 class Worktrees:
     def __init__(self):
         script_root = Path(__file__).resolve().parents[2]
@@ -261,6 +299,7 @@ class Worktrees:
                      f"POSTGRES_USER=lorefold\nPOSTGRES_DB=lorefold\nPOSTGRES_PASSWORD={state['password']}\n")
         target = self.root / ".env"
         if not target.exists():
+            template = seed_google_credentials((self.root / ".env.example").read_text())
             # Exclusive creation preserves user config if another editor creates it.
             try:
                 fd = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -268,7 +307,7 @@ class Worktrees:
                 pass
             else:
                 with os.fdopen(fd, "w") as stream:
-                    stream.write((self.root / ".env.example").read_text())
+                    stream.write(template)
         (self.root / ".lorefold/storage").mkdir(mode=0o700, exist_ok=True)
 
     def setup(self):
@@ -418,6 +457,8 @@ def main():
     access = sub.add_parser("configure-access", help="Save this machine's default browser access for future worktrees.")
     access.add_argument("--origin-template", required=True)
     access.add_argument("--tailscale-serve", action="store_true")
+    google = sub.add_parser("configure-google", help="Save this app's development Google credentials for new worktrees.")
+    google.add_argument("--from-env", default=".env", help="Read GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET from this dotenv file.")
     sub.add_parser("status", help="Show owned resources; never prints credentials.").add_argument("--json", action="store_true")
     sub.add_parser("logs", help="Show recent database logs.")
     sub.add_parser("down", help="Stop this worktree's app, private route, and PostgreSQL; keep data.").add_argument("--purge-data", action="store_true")
@@ -429,6 +470,10 @@ def main():
     launch = None
     starting = None
     with workspace.lock():
+        if args.action == "configure-google":
+            configure_google(workspace.root / args.from_env)
+            print(f"Saved private Google profile: {google_profile_path()}\nNew .env files inherit these two values. Existing .env files are unchanged.")
+            return
         if args.action == "configure-access":
             profile = {"origin_template": args.origin_template, "tailscale_serve": args.tailscale_serve}
             runtime.origin(profile, 15173)

@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
@@ -54,6 +55,40 @@ class EnvironmentTests(unittest.TestCase):
         self.assertNotEqual(first["id"], second["id"])
         self.assertNotEqual(first["id"], clone["id"])
         self.assertEqual(first["repo_id"], second["repo_id"])
+
+    def test_google_profile_copies_only_explicit_credentials_privately(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            source = Path(directory) / ".env"
+            values = {"GOOGLE_CLIENT_ID": "synthetic-client", "GOOGLE_CLIENT_SECRET": "synthetic # $HOME ' secret"}
+            source.write_text(dev.env_text({**values, "DATABASE_URL": "must-not-be-shared", "BETTER_AUTH_SECRET": "private-session-secret"}))
+            dev.configure_google(source)
+            self.assertEqual(dev.parse_env(dev.google_profile_path()), values)
+            self.assertEqual(dev.google_profile_path().stat().st_mode & 0o777, 0o600)
+            template = "# Local settings\nCUSTOM=preserved\nGOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n"
+            target = Path(directory) / "new.env"
+            target.write_text(dev.seed_google_credentials(template))
+            self.assertEqual(dev.parse_env(target), {"CUSTOM": "preserved", **values})
+
+    def test_invalid_google_configuration_preserves_the_previous_profile_without_leaking(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            source = Path(directory) / ".env"
+            source.write_text("GOOGLE_CLIENT_ID=synthetic-client\nGOOGLE_CLIENT_SECRET=synthetic-secret\n")
+            dev.configure_google(source)
+            original = dev.google_profile_path().read_bytes()
+            source.write_text("GOOGLE_CLIENT_SECRET=private-sensitive-value\n")
+            with self.assertRaises(dev.DevError) as error:
+                dev.configure_google(source)
+            self.assertNotIn("private-sensitive-value", str(error.exception))
+            self.assertEqual(dev.google_profile_path().read_bytes(), original)
+            dev.google_profile_path().write_text("DATABASE_URL=private-sensitive-value\n")
+            with self.assertRaises(dev.DevError) as error:
+                dev.seed_google_credentials("CUSTOM=preserved\n")
+            self.assertNotIn("private-sensitive-value", str(error.exception))
+
+    def test_absent_google_profile_leaves_template_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):
+            template = "# Safe template\nGOOGLE_CLIENT_ID=\nGOOGLE_CLIENT_SECRET=\n"
+            self.assertEqual(dev.seed_google_credentials(template), template)
 
 
 @unittest.skipUnless(os.environ.get("LOREFOLD_DOCKER_TESTS") == "1", "opt-in Docker integration test")
@@ -131,6 +166,10 @@ class WorktreeIntegrationTests(unittest.TestCase):
 
     def test_concurrent_worktrees_preserve_isolation_and_cleanup_boundaries(self):
         first, second = self.worktrees
+        credentials_file = self.base / "google-source.env"
+        credentials_file.write_text("GOOGLE_CLIENT_ID=synthetic-client\nGOOGLE_CLIENT_SECRET=synthetic-secret\nDATABASE_URL=must-not-be-shared\n")
+        configured = self.cli(first, "configure-google", "--from-env", str(credentials_file))
+        self.assertNotIn("synthetic-secret", configured.stdout + configured.stderr)
         initial_env = "# Developer settings\nDATABASE_URL=postgresql://never-use.invalid/production\nCUSTOM=preserved\n"
         (first / ".env").write_text(initial_env)
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -149,6 +188,16 @@ class WorktreeIntegrationTests(unittest.TestCase):
         (first / "backend/index.ts").touch(exist_ok=True)
         self.assertTrue(self.status(first)["app_implemented"])
         self.assertEqual((first / ".env").read_text(), initial_env)
+        self.assertEqual(dev.parse_env(second / ".env")["GOOGLE_CLIENT_ID"], "synthetic-client")
+        self.assertEqual(dev.parse_env(second / ".env")["GOOGLE_CLIENT_SECRET"], "synthetic-secret")
+        self.assertNotIn("must-not-be-shared", (second / ".env").read_text())
+        self.assertEqual((second / ".env").stat().st_mode & 0o777, 0o600)
+        self.cli(second, "run", "--", sys.executable, "-c",
+                 "import os; assert os.environ['GOOGLE_CLIENT_ID']=='synthetic-client'; assert os.environ['GOOGLE_CLIENT_SECRET']=='synthetic-secret'")
+        for path in self.worktrees:
+            for generated in (".env.worktree", "frontend/.env.worktree", ".lorefold/postgres.env", ".lorefold/state.json"):
+                self.assertNotIn("synthetic-secret", (path / generated).read_text())
+            self.assertNotIn("synthetic-secret", self.cli(path, "status", "--json").stdout)
         state_a = json.loads((first / ".lorefold/state.json").read_text())
         state_b = json.loads((second / ".lorefold/state.json").read_text())
         self.assertNotEqual(state_a["password"], state_b["password"])
