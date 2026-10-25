@@ -6,7 +6,8 @@ import { HTTPException } from "hono/http-exception";
 import { db } from "./db/client.js";
 import * as s from "./db/schema.js";
 import { listBooks } from "./library.js";
-import type { Universe, Resource } from "../shared/contracts.js";
+import { readGraph, type KnowledgeReader } from "./knowledge.js";
+import type { Universe, Resource, UniverseWorkspace } from "../shared/contracts.js";
 
 export const MAX_UPLOAD_SIZE = 25 * 1024 * 1024;
 const universeSelection = {
@@ -30,8 +31,8 @@ export function listUniverses(ownerId: string): Promise<Universe[]> {
   return db.select(universeSelection).from(s.universes)
     .where(eq(s.universes.ownerId, ownerId)).orderBy(asc(s.universes.createdAt), asc(s.universes.id));
 }
-export async function requireUniverse(ownerId: string, id: string) {
-  const [universe] = await db.select(universeSelection).from(s.universes)
+export async function requireUniverse(ownerId: string, id: string, reader: typeof db | KnowledgeReader = db) {
+  const [universe] = await reader.select(universeSelection).from(s.universes)
     .where(and(eq(s.universes.id, id), eq(s.universes.ownerId, ownerId)));
   if (!universe) throw new HTTPException(404, { message: "Universe not found." });
   return universe;
@@ -43,15 +44,32 @@ export async function createUniverse(ownerId: string, body: Record<string, unkno
   await db.insert(s.universes).values({ id, ownerId, name, description });
   return requireUniverse(ownerId, id);
 }
-export async function universeWorkspace(ownerId: string, id: string) {
-  const universe = await requireUniverse(ownerId, id);
-  const [books, resources] = await Promise.all([
-    listBooks(ownerId, id),
-    db.select(resourceSelection).from(s.resources)
+export async function universeWorkspace(ownerId: string, id: string): Promise<UniverseWorkspace> {
+  // Membership, per-book progress, and knowledge must agree even during concurrent writes.
+  return db.transaction(async (tx) => {
+    const universe = await requireUniverse(ownerId, id, tx);
+    const books = await listBooks(ownerId, id, tx);
+    const resources = await tx.select(resourceSelection).from(s.resources)
       .where(and(eq(s.resources.universeId, id), eq(s.resources.ownerId, ownerId)))
-      .orderBy(asc(s.resources.createdAt), asc(s.resources.id)),
-  ]);
-  return { universe, books, resources };
+      .orderBy(asc(s.resources.createdAt), asc(s.resources.id));
+    const graph: UniverseWorkspace["graph"] = { entities: [], relationships: [] };
+    for (const book of books) {
+      const cutoff = Math.min(book.completedChapter, book.totalChapters);
+      const source = await readGraph(tx, book.id, cutoff, "story");
+      // IDs are local to a book. Never infer a shared identity from an ID or name.
+      const scopedId = (localId: string) => JSON.stringify([book.id, localId]);
+      graph.entities.push(...source.entities.map((entity) => ({
+        ...entity, id: scopedId(entity.id), bookId: book.id,
+        facts: entity.facts.map((fact) => ({ ...fact, evidence: { ...fact.evidence, id: scopedId(fact.evidence.id) } })),
+      })));
+      graph.relationships.push(...source.relationships.map((relationship) => ({
+        ...relationship, id: scopedId(relationship.id), bookId: book.id,
+        source: scopedId(relationship.source), target: scopedId(relationship.target),
+        evidence: { ...relationship.evidence, id: scopedId(relationship.evidence.id) },
+      })));
+    }
+    return { universe, books, resources, graph };
+  }, { isolationLevel: "repeatable read", accessMode: "read only" });
 }
 export async function attachBook(ownerId: string, universeId: string, bookId: string) {
   await requireUniverse(ownerId, universeId);

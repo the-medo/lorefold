@@ -138,6 +138,70 @@ class PortAllocationTests(unittest.TestCase):
             self.workspace.validate(state, identity)
 
 
+class FrontendMigrationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        self.workspace = object.__new__(dev.Worktrees)
+        self.workspace.root = root
+        self.workspace.expected = dev.identity(root, root / ".git")
+        self.workspace.registry = root / "registry"
+        self.workspace.record = self.workspace.registry / f"{self.workspace.expected['id']}.json"
+        self.workspace.local_state = root / ".lorefold/state.json"
+        self.state = {"version": 1, **self.workspace.expected, "image": dev.IMAGE, "provisioned": True,
+                      "password": "a" * 64, "auth_secret": "b" * 64, "access": {},
+                      "ports": {"database": 15432, "backend": 13000, "frontend": 15228}}
+        self.workspace.save(self.state)
+        (root / ".env").write_text("# Keep my settings\nCUSTOM=preserved\n")
+        for target, name, value in ((dev.runtime, "service", "missing"), (dev.runtime, "serve_state", "disabled"),
+                                    (dev.runtime, "check_access", None), (self.workspace, "owned", {"owned": True})):
+            patcher = patch.object(target, name, return_value=value)
+            mock = patcher.start()
+            self.addCleanup(patcher.stop)
+            setattr(self, name, mock)
+        patcher = patch.object(dev.socket, "socket")
+        self.socket = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_migration_keeps_data_identity_secrets_and_settings_and_is_repeatable(self):
+        with self.workspace.lock():
+            updated = self.workspace.migrate_frontend_port(self.workspace.load())
+            self.assertEqual(self.workspace.load(), updated)
+            self.assertEqual(self.workspace.migrate_frontend_port(updated), updated)
+        self.assertTrue(15184 <= updated["ports"]["frontend"] <= 15190)
+        expected = {**self.state, "ports": {**self.state["ports"], "frontend": updated["ports"]["frontend"]}}
+        self.assertEqual(updated, expected)
+        self.assertEqual((self.workspace.root / ".env").read_text(), "# Keep my settings\nCUSTOM=preserved\n")
+        env = dev.parse_env(self.workspace.root / ".env.worktree")
+        self.assertEqual(env["APP_ORIGIN"], f"http://localhost:{updated['ports']['frontend']}")
+        self.assertEqual(env["BETTER_AUTH_URL"], env["APP_ORIGIN"])
+        self.assertEqual(env["BETTER_AUTH_SECRET"], self.state["auth_secret"])
+
+    def test_running_services_foreground_listeners_and_routes_cannot_be_migrated(self):
+        for reason in ("service", "listener", "old-route", "new-route", "ownership"):
+            with self.subTest(reason=reason):
+                self.service.return_value = "active" if reason == "service" else "missing"
+                self.serve_state.side_effect = None
+                self.serve_state.return_value = "ready" if reason == "old-route" else "disabled"
+                if reason == "new-route":
+                    self.serve_state.side_effect = ["missing", "ready"]
+                self.owned.side_effect = dev.DevError("ownership mismatch") if reason == "ownership" else None
+                bind = self.socket.return_value.__enter__.return_value.bind
+                bind.side_effect = OSError("occupied") if reason == "listener" else None
+                with self.assertRaises(dev.DevError), self.workspace.lock():
+                    self.workspace.migrate_frontend_port(self.workspace.load())
+                self.assertEqual(self.workspace.load(), self.state)
+                self.assertFalse((self.workspace.root / ".env.worktree").exists())
+
+    def test_full_range_keeps_the_existing_reservation(self):
+        records = [self.state, *[{"ports": {"frontend": port}} for port in range(15184, 15191)]]
+        with patch.object(self.workspace, "records", return_value=records), self.workspace.lock():
+            with self.assertRaisesRegex(dev.DevError, "No available frontend ports"):
+                self.workspace.migrate_frontend_port(self.workspace.load())
+        self.assertEqual(self.workspace.load(), self.state)
+
+
 @unittest.skipUnless(os.environ.get("LOREFOLD_DOCKER_TESTS") == "1", "opt-in Docker integration test")
 class WorktreeIntegrationTests(unittest.TestCase):
     def setUp(self):
@@ -210,6 +274,30 @@ class WorktreeIntegrationTests(unittest.TestCase):
             self.temporary._finalizer.detach()
             self.fail(f"Test cleanup needs attention at {self.base}: {'; '.join(errors)}")
         self.temporary.cleanup()
+
+    def test_legacy_frontend_migration_preserves_database_and_other_reservations(self):
+        first, second = self.worktrees
+        # Provision a legacy worktree through the launcher, without editing saved state.
+        execute([sys.executable, "-c",
+                 "import sys; sys.path.insert(0, 'scripts/worktree-dev'); import worktree_dev as dev; "
+                 "dev.PORT_RANGES['frontend']=(15220,15230); sys.argv=['worktree-dev','setup']; dev.main()"],
+                cwd=first, env=self.env)
+        self.cli(second, "setup")
+        original = json.loads((first / ".lorefold/state.json").read_text())
+        other = (second / ".lorefold/state.json").read_bytes()
+        self.sql(first, "CREATE TABLE migration_probe(value text); INSERT INTO migration_probe VALUES ('keep-me');")
+        self.cli(first, "down")
+        self.cli(first, "migrate-frontend-port")
+        updated = json.loads((first / ".lorefold/state.json").read_text())
+        port = updated["ports"]["frontend"]
+        self.assertTrue(15184 <= port <= 15190)
+        self.assertEqual(updated, {**original, "ports": {**original["ports"], "frontend": port}})
+        self.assertEqual((second / ".lorefold/state.json").read_bytes(), other)
+        self.assertNotEqual(port, json.loads(other)["ports"]["frontend"])
+        self.assertEqual(dev.parse_env(first / ".env.worktree")["APP_ORIGIN"], f"http://localhost:{port}")
+        self.cli(first, "setup")
+        self.assertEqual(self.sql(first, "SELECT value FROM migration_probe"), "keep-me")
+        self.assertEqual(self.sql(second, "SELECT 1"), "1")
 
     def test_concurrent_worktrees_preserve_isolation_and_cleanup_boundaries(self):
         first, second = self.worktrees

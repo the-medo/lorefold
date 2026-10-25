@@ -1723,13 +1723,21 @@ progress::-moz-progress-bar {
 }
 
 /* Universes, source collections, and private uploads. */
+.book-library-page { padding-top: 24px; }
+.library-page > .collection-toolbar { margin-top: 0; }
+.collection-toolbar h1, .universe-toolbar h1 { font-family: inherit; font-size: 17px; font-weight: 600; letter-spacing: normal; }
+.collection-actions { display: flex; align-items: center; gap: 16px; }
+.collection-actions > .primary { flex-shrink: 0; }
+.universes-page, .universe-page { max-width: none; margin: 0; padding: 24px; }
 .app-header nav { gap: 26px; }
 .header-nav { border-bottom-color: transparent; color: var(--muted) !important; }
 .header-nav.active { border-bottom-color: var(--purple); color: var(--purple) !important; }
-.universe-intro { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
-.universe-intro .page-intro { min-width: 0; max-width: 740px; }
-.universe-intro h1, .universe-intro p, .universe-card h2 { overflow-wrap: anywhere; }
-.universe-intro > button { flex-shrink: 0; }
+.universe-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.universe-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.universe-breadcrumb > .back-link { flex-shrink: 0; }
+.universe-breadcrumb > svg { flex-shrink: 0; color: var(--muted); }
+.universe-toolbar h1, .universe-card h2 { overflow-wrap: anywhere; }
+.universe-toolbar > button { flex-shrink: 0; }
 .universe-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 25px; }
 .universe-card { padding: 0; text-align: left; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; transition: transform .2s, box-shadow .2s; }
 .universe-card:hover { transform: translateY(-3px); box-shadow: 0 12px 25px #3c305611; }
@@ -1754,7 +1762,7 @@ progress::-moz-progress-bar {
 .create-universe-card p { margin-top: 10px; max-width: 200px; color: #8b8492; font-size: 13px; }
 .universe-footnote { display: flex; align-items: center; gap: 15px; margin-top: 42px; padding-top: 24px; border-top: 1px solid var(--line); color: #847c8e; font-size: 12px; }
 .inline-link { background: none; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 3px; }
-.universe-page > .back-link, .pending-book-page > .back-link { margin-bottom: 28px; }
+.pending-book-page > .back-link { margin-bottom: 28px; }
 .collection-empty { display: flex; align-items: center; gap: 23px; padding: 30px; background: #eeece780; border: 1px dashed #d8d4dc; border-radius: 10px; color: #8c8496; }
 .collection-empty h3 { color: #4e4857; font-weight: 500; }
 .collection-empty p { margin-top: 7px; font-size: 13px; }
@@ -1800,10 +1808,15 @@ progress::-moz-progress-bar {
 }
 @media (max-width: 700px) {
   .app-header { flex-wrap: wrap; height: auto; min-height: 102px; gap: 0; padding-top: 13px; }
+  .book-library-page { padding-top: 16px; }
+  .collection-toolbar { flex-wrap: wrap; }
+  .collection-toolbar h1, .universe-toolbar h1 { font-size: 14px; }
+  .collection-actions { flex: 1 1 100%; gap: 12px; }
+  .collection-actions .search { flex: 1; min-width: 0; }
+  .collection-actions .search input { width: 100%; }
+  .universes-page, .universe-page { padding: 16px; }
   .app-header nav { order: 3; width: 100%; height: 43px; gap: 26px; margin-top: 7px; }
   .header-nav { font-size: 12px; }
-  .universe-intro { align-items: flex-start; flex-direction: column; gap: 23px; }
-  .universe-intro .page-intro h1 { font-size: 39px; }
   .universe-grid { grid-template-columns: 1fr; gap: 20px; }
   .create-universe-card { min-height: 200px; }
   .universe-card-body { padding: 22px; }
@@ -1831,4 +1844,31 @@ progress::-moz-progress-bar {
   .map-node-label { max-width: 140px; font-size: 10px; }
   .graph-wrap:fullscreen .map-hint { bottom: 55px; }
   .map-selection { top: 38px; }
+}
+
+.universe-map { margin: 16px 0 32px; }
+.universe-map-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); border: 1px solid var(--line); border-radius: 12px; background: var(--paper); overflow: hidden; }
+.map-sources { border: 0; border-right: 1px solid var(--line); min-width: 0; padding: 24px 18px; margin: 0; background: #f7f5f9; }
+.map-sources legend { float: left; width: 100%; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+.map-source-actions { display: flex; gap: 18px; font-size: 12px; margin: 16px 0; clear: both; }
+.map-source { display: flex; align-items: flex-start; gap: 9px; padding: 16px 0; cursor: pointer; border-top: 1px solid var(--line); }
+.map-source input { accent-color: var(--purple); margin-top: 3px; flex: 0 0 auto; }
+.map-source > svg { color: var(--purple); flex-shrink: 0; margin-top: 2px; }
+.map-source > span { min-width: 0; overflow-wrap: anywhere; }
+.map-source strong { font-size: 12px; font-weight: 550; display: block; }
+.map-source small { display: block; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.map-source-note { font-size: 11px; color: var(--muted); margin-top: 16px; }
+.universe-map-content { padding: 22px; min-width: 0; }
+.universe-map-content > .search { width: min(100%, 340px); }
+.universe-map-content > .search input { width: 100%; min-width: 0; }
+.universe-map-content .entity-list button { text-align: left; min-width: 0; max-width: 100%; }
+.universe-map-content .entity-list span { overflow-wrap: anywhere; }
+.universe-map-content .entity-list small { display: block; font-size: 9px; color: var(--muted); margin-top: 3px; }
+.universe-map-content > .details { position: static; width: 100%; border: 1px solid var(--line); border-radius: 8px; margin-top: 22px; box-shadow: none; overflow-wrap: anywhere; }
+.universe-map-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; text-align: center; padding: 28px; color: var(--muted); }
+.universe-map-empty p { max-width: 390px; font-size: 13px; }
+@media (max-width: 850px) {
+  .universe-map-layout { grid-template-columns: 1fr; }
+  .map-sources { border-right: 0; border-bottom: 1px solid var(--line); }
+  .universe-map-content { padding: 16px; }
 }

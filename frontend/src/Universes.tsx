@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, BookOpen, Check, Download, FileText, Globe2, Library, Plus, Search, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Download, FileText, Globe2, Library, Plus, Search, Upload, X } from "lucide-react";
 import type { Book, Universe, UniverseWorkspace } from "../../shared/contracts.js";
 import { api } from "./api.js";
+import { UniverseMap } from "./UniverseMap.js";
 import { BookCard } from "./Books.js";
 
 function ErrorNote({ error }: { error: string }) {
@@ -58,14 +59,11 @@ export function UniversesPage({ navigate }: { navigate: (path: string) => void }
   }, [revision]);
   const matches = universes?.filter((u) => `${u.name} ${u.description}`.toLowerCase().includes(search.toLowerCase()));
   return <main className="library-page universes-page">
-    <div className="universe-intro">
-      <div className="page-intro"><span className="eyebrow">YOUR WORLDS, CONNECTED</span><h1>Universes</h1>
-        <p className="muted">Every world has more than one story.<br />Bring its books, lore, and discoveries together.</p>
+    <div className="section-toolbar collection-toolbar"><h1>Your universes <span className="count">{universes?.length ?? "—"}</span></h1>
+      <div className="collection-actions">
+        <label className="search"><Search size={17} /><input aria-label="Search universes" placeholder="Find a world…" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
+        <button className="primary" onClick={() => setCreating(true)}><Plus size={17} />Create universe</button>
       </div>
-      <button className="primary" onClick={() => setCreating(true)}><Plus size={17} />Create universe</button>
-    </div>
-    <div className="section-toolbar"><h2>Your universes <span className="count">{universes?.length ?? "—"}</span></h2>
-      <label className="search"><Search size={17} /><input aria-label="Search universes" placeholder="Find a world…" value={search} onChange={(e) => setSearch(e.target.value)} /></label>
     </div>
     {error ? <><ErrorNote error={error} /><button className="secondary" onClick={() => setRevision((n) => n + 1)}>Try again</button></>
       : !universes ? <p role="status" className="loading">Opening your universes…</p>
@@ -149,7 +147,12 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
   const [modal, setModal] = useState<"upload" | "library" | null>(null);
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    const controller = new AbortController(); setError("");
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController(); setError(""); setData(null);
     api<UniverseWorkspace>(`/universes/${encodeURIComponent(id)}`, { signal: controller.signal }).then(setData)
       .catch((e) => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
@@ -157,17 +160,22 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
   const saved = () => { setNotice(modal === "upload" ? "Resource uploaded. Your original file is saved." : "Book added to this universe."); setModal(null); setRevision((n) => n + 1); };
   const documents = data?.resources.filter((r) => r.kind === "document") ?? [];
   return <main className="library-page universe-page">
-    <button className="back-link" onClick={() => navigate("/")}><ArrowLeft size={16} />Universes</button>
+    <div className="universe-toolbar">
+      <div className="universe-breadcrumb">
+        <button className="back-link" onClick={() => navigate("/")}><ArrowLeft size={16} />Universes</button>
+        {data && <><ChevronRight size={14} aria-hidden="true" /><h1>{data.universe.name}</h1></>}
+      </div>
+      {data && <button className="primary" aria-label="Upload resource" onClick={() => setModal("upload")}><Upload size={17} />Upload</button>}
+    </div>
     <ErrorNote error={error} />
     {error && <button className="secondary" onClick={() => setRevision((n) => n + 1)}>Try again</button>}
     {!data ? !error && <p className="loading" role="status">Opening this universe…</p> : <>
-      <div className="universe-intro"><div className="page-intro"><span className="eyebrow">YOUR UNIVERSE</span><h1>{data.universe.name}</h1><p className="muted">{data.universe.description || "Gather the stories and sources that make this world your own."}</p></div>
-        <button className="primary" onClick={() => setModal("upload")}><Upload size={17} />Upload resource</button></div>
       {notice && <p className="success-note" role="status"><Check size={16} />{notice}</p>}
+      <UniverseMap key={data.universe.id} data={data} />
       <div className="section-toolbar"><h2>Books <span className="count">{data.books.length}</span></h2><button className="text-button" onClick={() => setModal("library")}><Library size={16} />Add from My library</button></div>
       {data.books.length ? <div className="books-grid">{data.books.map((book) => <BookCard key={book.id} book={book} openBook={(id) => navigate(`/books/${encodeURIComponent(id)}`)} />)}</div>
         : <div className="collection-empty"><BookOpen size={28} /><div><h3>The first story starts here.</h3><p>Upload a book or add one from your library.</p></div><button className="secondary" onClick={() => setModal("upload")}>Upload a book</button></div>}
-      <div className="section-toolbar"><h2>Other resources <span className="count">{documents.length}</span></h2><span className="muted">Reference material for this world</span></div>
+      <div className="section-toolbar"><h2>Other resources <span className="count">{documents.length}</span></h2></div>
       {documents.length ? <div className="resource-list">{documents.map((resource) => <article className="resource-row" key={resource.id}><span className="resource-icon"><FileText size={23} /></span><div><h3>{resource.title}</h3><p>{resource.filename} · {resource.byteSize < 1024 * 1024 ? `${Math.max(1, Math.round(resource.byteSize / 1024))} KB` : `${(resource.byteSize / 1024 / 1024).toFixed(1)} MB`} · Uploaded</p></div><a className="secondary download-link" href={`/api/resources/${resource.id}/download`} aria-label={`Download ${resource.title}`}><Download size={16} />Download</a></article>)}</div>
         : <div className="collection-empty"><FileText size={28} /><div><h3>A place for the bigger picture.</h3><p>Add notes, guides, or other reference documents.</p></div></div>}
     </>}

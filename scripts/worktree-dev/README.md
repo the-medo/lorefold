@@ -77,6 +77,7 @@ on the Steam Machine it is installed under `/home/medo/dev/nodejs/bin`.
 | --- | --- |
 | `setup` | Create/reuse PostgreSQL, wait for an authenticated connection, generate env files |
 | `up` | Start database, background app, and configured private route; wait for health |
+| `migrate-frontend-port` | Move a stopped legacy preview into 15184–15190 without changing its database, data, or credentials |
 | `configure-access --origin-template ... [--tailscale-serve]` | Save the machine default for new/stopped worktrees |
 | `configure-google --from-env .env` | Save only this app's development Google credentials for new `.env` files |
 | `status [--json]` | Report resources, browser URL, HTTP health, and background service state, without secrets |
@@ -137,8 +138,13 @@ reviewing its data. Never purge data just to obtain a port without authorization
 Existing reservations from the previous frontend range (15173–15272), including
 URLs such as port 15228, remain valid for status, startup, and shutdown. They are
 preserved to avoid changing active previews, origins, or Google callbacks.
-Moving one into the new range requires a deliberate migration; do not edit its
-generated environment files or registry state by hand.
+Move one into the new range with `down`, `migrate-frontend-port`, then `up`.
+The migration reserves a free frontend port under the registry lock, regenerates
+the origins, and preserves the database/backend ports, data, and credentials.
+It refuses running services, foreground listeners, and existing private routes.
+An already migrated worktree keeps its port. Do not edit generated environment
+files or registry state by hand. Register the new exact Google callback URL if it
+is not already on the development client.
 
 The allocator avoids other Lorefold reservations and current listeners. A
 reservation is not an OS-level socket lock: a different program can claim a

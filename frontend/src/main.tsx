@@ -24,16 +24,15 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  X,
 } from "lucide-react";
 import type {
   Book,
-  Entity,
   EntityKind,
   GraphMode,
   Workspace,
 } from "../../shared/contracts.js";
 import { api } from "./api.js";
+import { EntityDetails } from "./EntityDetails.js";
 import { GraphBoundary } from "./GraphBoundary.js";
 import { entityColors } from "./graph-theme.js";
 import { BookCard, Cover } from "./Books.js";
@@ -224,18 +223,11 @@ function LibraryPage({ openBook }: { openBook: (id: string) => void }) {
     `${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()),
   );
   return (
-    <main className="library-page">
-      <div className="page-intro">
-        <span className="eyebrow">YOUR LIBRARY</span>
-        <h1>Pick up the thread.</h1>
-        <p className="muted">
-          A familiar world is waiting. Return right where you left off.
-        </p>
-      </div>
-      <div className="section-toolbar">
-        <h2>
+    <main className="library-page book-library-page">
+      <div className="section-toolbar collection-toolbar">
+        <h1>
           Your books <span className="count">{books?.length ?? "—"}</span>
-        </h2>
+        </h1>
         <label className="search">
           <Search size={17} />
           <input
@@ -294,76 +286,6 @@ function LibraryPage({ openBook }: { openBook: (id: string) => void }) {
         <span className="sample-badge">CHAPTER BY CHAPTER</span>
       </div>
     </main>
-  );
-}
-
-function Details({
-  entity,
-  workspace,
-  close,
-}: {
-  entity: Entity;
-  workspace: Workspace;
-  close: () => void;
-}) {
-  const connections = workspace.graph.relationships.filter(
-    (r) => r.source === entity.id || r.target === entity.id,
-  );
-  const label = (id: string) =>
-    workspace.graph.entities.find((e) => e.id === id)?.label;
-  return (
-    <aside className="details" aria-label="Entity details">
-      <div className="details-heading">
-        <span className="eyebrow">A CLOSER LOOK</span>
-        <button
-          className="icon-button"
-          aria-label="Close details"
-          onClick={close}
-        >
-          <X size={18} />
-        </button>
-      </div>
-      <span
-        className="entity-symbol"
-        style={{ background: entityColors[entity.kind] }}
-      >
-        {entity.label.charAt(0)}
-      </span>
-      <span className="eyebrow entity-kind">{entity.kind}</span>
-      <h2>{entity.label}</h2>
-      {entity.aliases.length > 0 && (
-        <p className="muted">Also known as {entity.aliases.join(", ")}</p>
-      )}
-      {entity.facts.map((fact, index) => (
-        <div className="fact" key={index}>
-          <p>{fact.value}</p>
-          <details>
-            <summary>Source · Chapter {fact.evidence.chapter}</summary>
-            <blockquote>{fact.evidence.quote}</blockquote>
-          </details>
-        </div>
-      ))}
-      <h3 className="detail-subtitle">Connections</h3>
-      {connections.length ? (
-        connections.map((r) => (
-          <div className="connection" key={r.id}>
-            <p>
-              <strong>{label(r.source)}</strong> {r.label}{" "}
-              <strong>{label(r.target)}</strong>
-            </p>
-            <details>
-              <summary>Source · Chapter {r.evidence.chapter}</summary>
-              <blockquote>{r.evidence.quote}</blockquote>
-            </details>
-          </div>
-        ))
-      ) : (
-        <p className="muted">No connections in this view yet.</p>
-      )}
-      <div className="boundary-note">
-        <ShieldCheck size={15} /> Known through chapter {workspace.cutoff}
-      </div>
-    </aside>
   );
 }
 
@@ -786,9 +708,10 @@ function BookPage({
           )}
         </section>
         {entity && (
-          <Details
+          <EntityDetails
             entity={entity}
-            workspace={workspace}
+            graph={workspace.graph}
+            cutoff={workspace.cutoff}
             close={() => setSelected(null)}
           />
         )}

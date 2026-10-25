@@ -32,7 +32,7 @@ test("universes are the first page; create, upload, download, and retain books i
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Open my space" }).click();
-  await expect(page.getByRole("heading", { name: "Universes", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Your universes/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Bellweather/ })).toContainText("1 book");
   await page.getByRole("button", { name: "Create universe", exact: true }).click();
   await page.getByLabel("Universe name").fill("The Silver Orchard");
