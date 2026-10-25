@@ -17,6 +17,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "demo:setup": "tsx scripts/demo-setup.ts",
+    "benchmark:book": "tsx scripts/book-benchmark.ts",
+    "test:book-benchmark": "tsx --test tests/book-benchmark.test.ts && python3 -m unittest discover -s scripts/book-benchmark/tests -v",
     "user:create": "tsx scripts/create-user.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:browser": "playwright test",

@@ -167,6 +167,12 @@ No R2, chapter extraction, model, or external AI calls are used. Processing prog
 displayed separately from reading progress. The API owns the spoiler boundary;
 changing a browser URL cannot fetch knowledge beyond saved progress.
 
+A separate [book model benchmark](docs/book-benchmark.md) can inspect EPUB chapters
+and compare six AI models before choosing an analysis provider. Run
+`npm run benchmark:book` for a free deterministic mock test. Live calls require
+explicit development credentials and opt-in; private reports remain local. This
+CLI does not analyze uploaded books in the app or populate their graphs.
+
 `npm run build` builds React and compiles the Hono server. `npm start` serves both
 from one server after setting `DATABASE_URL`, `HOST`, `PORT`, `APP_ORIGIN`,
 `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, and `AUTH_COOKIE_PREFIX`. The two origins
