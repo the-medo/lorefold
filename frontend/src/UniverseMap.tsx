@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { BookOpen, ChevronRight, FileText, Network, Search, ShieldCheck } from "lucide-react";
+import { BookOpen, ChevronRight, FileText, Network, Search } from "lucide-react";
 import type { EntityKind, UniverseWorkspace } from "../../shared/contracts.js";
 import { EntityDetails } from "./EntityDetails.js";
 import { GraphBoundary } from "./GraphBoundary.js";
@@ -59,15 +59,10 @@ export function UniverseMap({ data }: { data: UniverseWorkspace }) {
     : !includedGraph.entities.length ? "No knowledge to map yet. Finish chapters in a book to reveal its story. Uploaded sources will contribute after extraction and analysis are available."
     : "No matches. Try another search or entity type.";
 
-  return <section className="universe-map" aria-labelledby="universe-map-title">
-    <div className="section-toolbar"><div><h2 id="universe-map-title"><Network size={20} />Universe map</h2>
-      <p className="muted">The story so far, across your books.</p></div>
-      <span className="universe-map-boundary"><ShieldCheck size={16} />Each book stops at your finished chapter</span>
-    </div>
+  return <section className="universe-map" aria-label="Universe map">
     <div className="universe-map-layout">
       <fieldset className="map-sources">
         <legend>Included sources</legend>
-        <p className="muted">Choose which stories shape this view.</p>
         <div className="map-source-actions"><button className="inline-link" disabled={!sources.length || includedCount === sources.length} onClick={() => changeSources([])}>Select all</button>
           <button className="inline-link" disabled={!includedCount} onClick={() => changeSources(sources.map((source) => source.id))}>Deselect all</button></div>
         {sources.map((source) => <label className="map-source" key={source.id}>
@@ -76,7 +71,7 @@ export function UniverseMap({ data }: { data: UniverseWorkspace }) {
           {source.kind === "book" ? <BookOpen size={16} /> : <FileText size={16} />}
           <span><strong>{source.title}</strong><small>{source.status}</small></span>
         </label>)}
-        <p className="map-source-note">{includedCount} of {sources.length} selected. Your choices are saved in this browser. Changing this view keeps your reading progress.</p>
+        <p className="map-source-note">{includedCount} of {sources.length} selected · Saved in this browser</p>
         {sources.some((source) => source.kind === "document") && <p className="map-source-note">Reference documents have no analyzed knowledge yet.</p>}
       </fieldset>
       <div className="universe-map-content">

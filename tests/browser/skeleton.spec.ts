@@ -47,10 +47,10 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Open my space" }).click();
-  await expect(page.getByRole("heading", { name: "Universes", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^Your universes/ })).toBeVisible();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "My library", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Pick up the thread." }),
+    page.getByRole("heading", { name: /^Your books/ }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/library.png", fullPage: true });
   await page.getByRole("button", { name: "Open book", exact: true }).click();

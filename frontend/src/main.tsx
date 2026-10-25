@@ -223,18 +223,11 @@ function LibraryPage({ openBook }: { openBook: (id: string) => void }) {
     `${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()),
   );
   return (
-    <main className="library-page">
-      <div className="page-intro">
-        <span className="eyebrow">YOUR LIBRARY</span>
-        <h1>Pick up the thread.</h1>
-        <p className="muted">
-          A familiar world is waiting. Return right where you left off.
-        </p>
-      </div>
-      <div className="section-toolbar">
-        <h2>
+    <main className="library-page book-library-page">
+      <div className="section-toolbar collection-toolbar">
+        <h1>
           Your books <span className="count">{books?.length ?? "—"}</span>
-        </h2>
+        </h1>
         <label className="search">
           <Search size={17} />
           <input
