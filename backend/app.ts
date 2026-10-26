@@ -5,10 +5,11 @@ import { HTTPException } from "hono/http-exception";
 import { auth, signInProviders, trustedOrigins } from "./auth.js";
 import { getWorkspace, listBooks, saveProgress } from "./library.js";
 import { pool } from "./db/client.js";
+import { aiSettings, chatgptConnections, saveAnalysisPreference } from "./ai.js";
 import { assignTheme, deleteTheme, saveTheme, themeLibrary } from "./themes.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
 
-export const app = new Hono<{ Variables: { userId: string } }>();
+export const app = new Hono<{ Variables: { userId: string; sessionId: string } }>();
 app.use("*", secureHeaders());
 app.use("/api/*", async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -35,6 +36,7 @@ app.use("/api/*", async (c, next) => {
     return c.json({ error: "Request origin is not allowed." }, 403);
   }
   c.set("userId", session.user.id);
+  c.set("sessionId", session.session.id);
   await next();
 });
 app.get("/api/books", async (c) =>
@@ -49,6 +51,15 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
     throw new HTTPException(400, { message: "Send a JSON object." });
   }
 }
+app.get("/api/settings/ai", async c => c.json(await aiSettings(c.get("userId"))));
+app.put("/api/settings/ai", async c => c.json({ preference: await saveAnalysisPreference(c.get("userId"), await jsonObject(c.req.raw)) }));
+app.post("/api/connections/chatgpt", async c => c.json(await chatgptConnections.start(c.get("userId"), c.get("sessionId"))));
+app.get("/api/connections/chatgpt/attempt", c => c.json(chatgptConnections.progress(c.get("userId"), c.get("sessionId"))));
+app.delete("/api/connections/chatgpt/attempt", async c => {
+  const result = await chatgptConnections.cancel(c.get("userId"), c.get("sessionId"));
+  return c.json({ cancelled: true, ...result });
+});
+app.delete("/api/connections/chatgpt", async c => c.json(await chatgptConnections.disconnect(c.get("userId"))));
 app.get("/api/themes", async (c) => c.json(await themeLibrary(c.get("userId"), c.req.query("universeId"), c.req.query("bookId"))));
 app.post("/api/themes", async (c) => c.json({ theme: await saveTheme(c.get("userId"), await jsonObject(c.req.raw)) }, 201));
 app.put("/api/themes/:id", async (c) => c.json({ theme: await saveTheme(c.get("userId"), await jsonObject(c.req.raw), c.req.param("id")) }));

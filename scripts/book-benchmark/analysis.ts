@@ -1,6 +1,14 @@
 import type { Chapter } from "./source.js";
 
-export const PROMPT_VERSION = "book-evidence-v1";
+export const PROMPT_VERSION = "book-evidence-v2";
+// One contract for the instructions and mechanical validator.
+export const ANALYSIS_LIMITS = {
+  recap: { min: 1, max: 8 }, entities: { min: 0, max: 30 },
+  aliases: { min: 0, max: 6 }, facts: { min: 0, max: 6 },
+  relationships: { min: 0, max: 40 }, evidence: { min: 1, max: 6 },
+  text: 2000, label: 200, id: 80, quote: 1200,
+} as const;
+const L = ANALYSIS_LIMITS;
 export type Evidence = { chapter: number; paragraphId: string; quote: string };
 export type Claim = { text: string; revealChapter: number; evidence: Evidence[] };
 export type Analysis = {
@@ -22,8 +30,14 @@ Every recap point, entity label, alias, fact and relationship needs one or more 
 quotes and their supplied chapter number and paragraph ID. Quotes must be contiguous within
 one paragraph. revealChapter is when that particular claim is supported: at least the latest
 chapter of its evidence, and never after currentChapter. Recap points must cite the current
-chapter. Empty arrays are preferable to unsupported claims. Keep the response compact:
-3–8 recap points, up to 30 entities, up to 6 facts/aliases per entity, up to 40 relationships.
+chapter. Keep the response compact and obey these limits:
+recap: ${L.recap.min}–${L.recap.max} points (aim for 3–8 when the source supports them);
+entities: ${L.entities.min}–${L.entities.max}; aliases per entity: ${L.aliases.min}–${L.aliases.max};
+facts per entity: ${L.facts.min}–${L.facts.max}; relationships: ${L.relationships.min}–${L.relationships.max}.
+Every evidence array must contain ${L.evidence.min}–${L.evidence.max} citations, including recap evidence.
+Split a recap point if it needs more evidence. Empty optional arrays are preferable to unsupported claims.
+All strings must be nonempty. Maximum lengths (UTF-16 code units): text ${L.text},
+label ${L.label}, entity/paragraph IDs ${L.id}, and each quote ${L.quote}.
 The output shape is exactly:
 {"chapter":1,"recap":[{"text":"...","revealChapter":1,"evidence":[{"chapter":1,"paragraphId":"s1p1","quote":"exact source words"}]}],
 "entities":[{"id":"e1","kind":"character|location|faction|object","label":"name from source","revealChapter":1,"evidence":[{"chapter":1,"paragraphId":"s1p1","quote":"exact source words"}],"aliases":[],"facts":[]}],
@@ -55,7 +69,7 @@ export function validateAnalysis(value: unknown, chapters: Chapter[]) {
     if (Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !(k in v))) issue(path, "unexpected or missing fields");
     return true;
   }
-  function string(v: unknown, path: string, max = 2000): v is string {
+  function string(v: unknown, path: string, max: number = L.text): v is string {
     if (typeof v !== "string" || !v.trim() || v.length > max) { issue(path, "expected bounded nonempty string"); return false; }
     return true;
   }
@@ -68,12 +82,12 @@ export function validateAnalysis(value: unknown, chapters: Chapter[]) {
     const reveal = v.revealChapter;
     if (!Number.isInteger(reveal) || (reveal as number) < 1 || (reveal as number) > current) issue(path, "invalid reveal chapter or future reveal");
     let hasCurrent = false;
-    for (const [i, e] of array(v.evidence, `${path}.evidence`, 1, 6).entries()) {
+    for (const [i, e] of array(v.evidence, `${path}.evidence`, L.evidence.min, L.evidence.max).entries()) {
       const ep = `${path}.evidence[${i}]`; citations++;
       if (!shape(e, ["chapter", "paragraphId", "quote"], ep)) continue;
       if (!Number.isInteger(e.chapter) || (e.chapter as number) > current || (e.chapter as number) > (reveal as number)) issue(ep, "evidence is after reveal/cutoff or has invalid chapter");
-      const idValid = string(e.paragraphId, `${ep}.paragraphId`, 80);
-      const quoteValid = string(e.quote, `${ep}.quote`, 1200);
+      const idValid = string(e.paragraphId, `${ep}.paragraphId`, L.id);
+      const quoteValid = string(e.quote, `${ep}.quote`, L.quote);
       const source = passages.get(`${e.chapter}:${e.paragraphId}`);
       if (!source || !idValid || !quoteValid || !source.includes(normalize(e.quote as string))) issue(ep, "quote does not match a supplied paragraph");
       else matchedCitations++;
@@ -87,20 +101,20 @@ export function validateAnalysis(value: unknown, chapters: Chapter[]) {
   }
   if (shape(value, ["chapter", "recap", "entities", "relationships"], "analysis")) {
     if (value.chapter !== current) issue("analysis.chapter", "incorrect current chapter");
-    array(value.recap, "recap", 1, 12).forEach((c, i) => claim(c, `recap[${i}]`, true));
+    array(value.recap, "recap", L.recap.min, L.recap.max).forEach((c, i) => claim(c, `recap[${i}]`, true));
     const ids = new Set<string>();
-    array(value.entities, "entities", 0, 60).forEach((e, i) => {
+    array(value.entities, "entities", L.entities.min, L.entities.max).forEach((e, i) => {
       const p = `entities[${i}]`;
       if (!shape(e, ["id", "kind", "label", "revealChapter", "evidence", "aliases", "facts"], p)) return;
-      if (string(e.id, `${p}.id`, 80)) {
+      if (string(e.id, `${p}.id`, L.id)) {
         if (ids.has(e.id)) issue(p, "duplicate entity ID");
         ids.add(e.id);
       }
       if (!["character", "location", "faction", "object"].includes(e.kind as string)) issue(p, "invalid entity kind");
-      string(e.label, `${p}.label`, 200); supported(e, p);
-      for (const key of ["aliases", "facts"]) array(e[key], `${p}.${key}`, 0, 12).forEach((c, j) => claim(c, `${p}.${key}[${j}]`));
+      string(e.label, `${p}.label`, L.label); supported(e, p);
+      for (const key of ["aliases", "facts"] as const) array(e[key], `${p}.${key}`, L[key].min, L[key].max).forEach((c, j) => claim(c, `${p}.${key}[${j}]`));
     });
-    array(value.relationships, "relationships", 0, 80).forEach((r, i) => {
+    array(value.relationships, "relationships", L.relationships.min, L.relationships.max).forEach((r, i) => {
       const p = `relationships[${i}]`;
       if (!shape(r, ["source", "target", "text", "revealChapter", "evidence"], p)) return;
       if (!ids.has(r.source as string) || !ids.has(r.target as string)) issue(p, "missing relationship endpoint");

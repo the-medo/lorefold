@@ -130,6 +130,24 @@ progress. Browser search/filtering operates only over the already restricted
 payload. API tests explicitly cover identity reveals, direct requests for later
 chapters, rewinds, ownership, and repeated migrations/seeds.
 
+## AI preferences and personal connections
+
+`user_ai_preferences` stores a reader's model and reasoning effort, initially
+`gpt-6-astra` / `high`. User settings exposes the six evaluated Sol 6.1 and Astra
+combinations. This is a saved preference; uploaded books do not yet start an
+analysis job.
+
+Personal development installations can explicitly enable the OpenAI ChatGPT plan
+OAuth flow. The account settings API binds sign-in attempts to a Lorefold user and
+session; it validates the session again before saving the connection. Tokens live
+in a protected, ignored, worktree-local store per user, separate from the CLI
+benchmark's machine-wide profiles. Disconnect attempts revocation and clears local
+tokens. Credentials never enter frontend state or PostgreSQL preferences.
+
+This personal integration is disabled in production. It does not replace the
+chosen Cloudflare gateway/worker deployment: hosted ChatGPT subscription access
+needs separate OpenAI access. See [personal connection setup](chatgpt-connections.md).
+
 ## User themes
 
 `themes` stores a user-owned name and a versioned JSONB configuration. Separate

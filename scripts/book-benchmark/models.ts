@@ -5,7 +5,7 @@ export type Model = {
   inputUSD: number;
   outputUSD: number;
   context: number;
-  reasoning?: "low";
+  reasoning?: "low" | "medium" | "high" | "xhigh";
 };
 
 // USD / million tokens, uncached standard inference. Versioned in every run.

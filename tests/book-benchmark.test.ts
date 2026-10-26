@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { mockAnalysis, parseAnalysis, prompt, syntheticChapters, validateAnalysis } from "../scripts/book-benchmark/analysis.js";
+import { ANALYSIS_LIMITS as L, mockAnalysis, parseAnalysis, prompt, syntheticChapters, validateAnalysis, type Analysis } from "../scripts/book-benchmark/analysis.js";
 import { MODELS, selectModels } from "../scripts/book-benchmark/models.js";
 import { credentials, costUSD, liveProvider, parseResponse, requestBody, reservation, type ProviderResult } from "../scripts/book-benchmark/provider.js";
 import { createRun, manifest, plan, readManifest, runBenchmark } from "../scripts/book-benchmark/runner.js";
@@ -62,6 +62,36 @@ test("validator rejects fake evidence, future reveals, ungrounded aliases and da
   assert.equal(validateAnalysis(unsupported, context).semanticReview, "required");
 });
 
+test("prompt and validator share compact bounds, including the seven-citation regression", () => {
+  const context = structuredClone(chapters.slice(0, 1));
+  context[0].paragraphs[0] = { id: "p".repeat(L.id), text: "a".repeat(L.quote + 1) };
+  const base = mockAnalysis(context);
+  const entity = { id: "e1", kind: "character", label: "Ada", revealChapter: 1, evidence: base.recap[0].evidence, aliases: [], facts: [] };
+  base.entities = [entity];
+  const cases: [string, number, (a: Analysis, n: number) => void][] = [
+    ["recap", L.recap.max, (a, n) => { a.recap = Array.from({ length: n }, () => structuredClone(base.recap[0])); }],
+    ["entities", L.entities.max, (a, n) => { a.entities = Array.from({ length: n }, (_, i) => ({ ...structuredClone(entity), id: `e${i}` })); }],
+    ["aliases", L.aliases.max, (a, n) => { a.entities[0].aliases = Array.from({ length: n }, () => structuredClone(base.recap[0])); }],
+    ["facts", L.facts.max, (a, n) => { a.entities[0].facts = Array.from({ length: n }, () => structuredClone(base.recap[0])); }],
+    ["relationships", L.relationships.max, (a, n) => { a.relationships = Array.from({ length: n }, () => ({ ...structuredClone(base.recap[0]), source: "e1", target: "e1" })); }],
+    ["evidence", L.evidence.max, (a, n) => { a.recap[0].evidence = Array.from({ length: n }, () => structuredClone(base.recap[0].evidence[0])); }],
+    ["text", L.text, (a, n) => { a.recap[0].text = "a".repeat(n); }],
+    ["label", L.label, (a, n) => { a.entities[0].label = "a".repeat(n); }],
+    ["id", L.id, (a, n) => { a.entities[0].id = "a".repeat(n); }],
+    ["quote", L.quote, (a, n) => { a.recap[0].evidence[0].quote = "a".repeat(n); }],
+  ];
+  for (const [name, max, mutate] of cases) {
+    const atLimit = structuredClone(base); mutate(atLimit, max);
+    assert.equal(validateAnalysis(atLimit, context).valid, true, `${name} at limit`);
+    mutate(atLimit, max + 1);
+    assert.equal(validateAnalysis(atLimit, context).valid, false, `${name} above limit`);
+  }
+  assert.match(prompt(context).system, /Every evidence array must contain 1–6 citations, including recap evidence/);
+  assert.match(prompt(context).system, /recap: 1–8 points/);
+  const empty = structuredClone(base); empty.recap = [];
+  assert.equal(validateAnalysis(empty, context).valid, false);
+});
+
 test("provider shapes and usage account for reasoning once and reject truncation", () => {
   assert.equal(requestBody(call()).max_output_tokens, 8192);
   assert.deepEqual(requestBody(call()).reasoning, { effort: "low" });
@@ -115,6 +145,8 @@ test("mock runs make no network requests, save private reports, and resume witho
     assert.match(await readFile(join(directory, "report.md"), "utf8"), /plumbing test only/);
     const resumed = await runBenchmark(directory, await readManifest(directory));
     assert.deepEqual(resumed.report.entries, result.report.entries);
+    await writeFile(join(directory, "run.json"), JSON.stringify({ ...run, promptVersion: "book-evidence-v1" }));
+    await assert.rejects(readManifest(directory), /incompatible/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -165,7 +197,7 @@ test("failure, truncation and missing usage remain visible, checkpointed and cha
     assert.equal(JSON.stringify(result.report).includes("secret arbitrary"), false);
     assert.equal(result.report.entries[1].analysis!.validation.valid, false);
     assert.equal(result.report.entries[2].chargedEstimateUSD, null);
-    assert.ok(result.report.unknownCostReservationsUSD > 0);
+    assert.ok(result.report.unknownCostReservationsUSD! > 0);
     assert.equal(plan(run)[0].promptHash, plan(run)[1].promptHash);
     await runBenchmark(directory, run, async () => { throw new Error("Must not retry"); });
     await writeFile(join(directory, ".lock"), "123");

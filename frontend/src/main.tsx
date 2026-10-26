@@ -792,7 +792,7 @@ function App() {
   const bookMatch = url.pathname.match(/^\/books\/([^/]+)$/);
   const universeMatch = url.pathname.match(/^\/universes\/([^/]+)$/);
   const inLibrary = url.pathname === "/library" || !!bookMatch;
-  const inSettings = url.pathname === "/settings" || url.pathname === "/settings/themes";
+  const inSettings = ["/settings", "/settings/themes", "/settings/ai"].includes(url.pathname);
   const chapter = url.searchParams.has("chapter")
     ? Number(url.searchParams.get("chapter"))
     : undefined;
@@ -842,7 +842,7 @@ function App() {
         <UniversePage key={universeMatch[1]} id={decodeURIComponent(universeMatch[1])} navigate={navigate} />
       ) : inLibrary ? (
         <LibraryPage openBook={(id) => navigate(`/books/${encodeURIComponent(id)}`)} />
-      ) : inSettings ? <SettingsPage user={user} section={url.pathname === "/settings/themes" ? "themes" : "account"} navigate={navigate} /> : <UniversesPage navigate={navigate} />}
+      ) : inSettings ? <SettingsPage user={user} section={url.pathname === "/settings/themes" ? "themes" : url.pathname === "/settings/ai" ? "ai" : "account"} navigate={navigate} /> : <UniversesPage navigate={navigate} />}
     </div></ThemeProvider>
   );
 }
