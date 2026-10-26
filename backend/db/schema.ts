@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { ThemeConfig } from "../../shared/themes.js";
 import {
   pgTable,
   text,
@@ -81,6 +82,31 @@ export const universes = pgTable("universes", {
   description: text().notNull().default(""),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("universe_owner_identity").on(t.id, t.ownerId)]);
+
+export const themes = pgTable("themes", {
+  id: text().primaryKey(),
+  ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  name: text().notNull(),
+  config: jsonb().$type<ThemeConfig>().notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("theme_owner_identity").on(t.id, t.ownerId)]);
+
+// A missing assignment means inheritance. Cascades remove assignments when a
+// theme is deleted, without deleting users/universes or nulling their owner IDs.
+export const userThemePreferences = pgTable("user_theme_preferences", {
+  userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  themeId: text("theme_id").notNull(),
+}, (t) => [foreignKey({ columns: [t.themeId, t.userId], foreignColumns: [themes.id, themes.ownerId] }).onDelete("cascade")]);
+
+export const universeThemePreferences = pgTable("universe_theme_preferences", {
+  universeId: text("universe_id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  themeId: text("theme_id").notNull(),
+}, (t) => [
+  foreignKey({ columns: [t.universeId, t.ownerId], foreignColumns: [universes.id, universes.ownerId] }).onDelete("cascade"),
+  foreignKey({ columns: [t.themeId, t.ownerId], foreignColumns: [themes.id, themes.ownerId] }).onDelete("cascade"),
+]);
 
 export const books = pgTable("books", {
   id: text().primaryKey(),

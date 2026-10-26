@@ -92,6 +92,6 @@ test("universes are the first page; create, upload, download, and retain books i
   await expect(page.getByRole("heading", { name: "No universes found." })).toBeVisible();
   await page.getByLabel("Search universes").fill("");
   await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to Lorefold." })).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -1,9 +1,10 @@
 # Google sign-in
 
 Lorefold supports email/password and optional Google sign-in through Better Auth.
-Both open the same private library. Google sign-in accepts only existing invited
-users; it does not enable public registration. Provision the user's exact Google
-email with `run -- npm run user:create` before their first Google sign-in.
+Both open the same private library. A first sign-in with a verified Google email
+automatically creates an account; no invitation or manual provisioning is needed.
+Existing users keep their account and data. Email/password accounts can still be
+created with `run -- npm run user:create`; public email/password signup is disabled.
 
 ## Google Cloud setup
 
@@ -47,9 +48,11 @@ No billing account or application hosting is needed for this sign-in integration
    set, the sign-in page displays **Continue with Google**. With both empty, email
    sign-in remains available. A partial configuration fails startup with an
    actionable error instead of advertising a broken provider.
-6. Sign in through the exact Browser URL with an invited Google account. Reload
-   to confirm the session persists, make an authenticated change, sign out, and
-   confirm email sign-in still opens the same library.
+6. Sign in through the exact Browser URL with a Google account. A new user should
+   reach an empty private library. Reload to confirm the session persists, make
+   an authenticated change, sign out, and sign in again to confirm the same data
+   is preserved. For an existing password account, also confirm email sign-in
+   still opens the same library.
 
 The CLI can create the project, but the supported web OAuth client setup uses
 the Cloud Console. `gcloud iam oauth-clients` manages workforce federation clients;
@@ -59,17 +62,20 @@ and [Better Auth's Google integration](https://www.better-auth.com/docs/authenti
 
 ## Account and session behavior
 
-Google must report a verified email address. On first sign-in, Better Auth links
-the Google identity to the existing local user with that same email; their user
-ID, books, universes, password, and progress remain intact. Later sign-ins use the
-linked Google subject. Accounts with different emails cannot be linked, and an
-uninvited Google user cannot create an account, even by requesting signup explicitly.
+Google must report a verified email address. On first sign-in, Better Auth creates
+the user, Google account, and session. The new private library starts empty; no
+password or demo data is generated. The sample book can be seeded explicitly with
+`run -- npm run db:seed -- email`. If the email already belongs to a local user,
+Better Auth links the Google identity to that user instead; their user ID, books,
+universes, themes, password, and progress remain intact. Later sign-ins use the
+linked Google subject. Accounts with different emails cannot be linked.
 
-Local users are created only by a trusted private provisioning command. Because
-there is no local email-verification flow, automatic linking accepts Google's
+Password accounts are created only by a trusted private provisioning command.
+Because there is no local email-verification flow, automatic linking accepts Google's
 verified email without requiring the local row to have been marked verified
-beforehand. Revisit this policy before adding public registration. Unverified
-Google emails are rejected for both first-time linking and returning sign-ins.
+beforehand. Revisit this policy before adding public email/password registration.
+Unverified Google emails are rejected before account creation, first-time linking,
+and returning sign-ins.
 
 Better Auth handles OAuth state, PKCE, callback validation, and HTTP-only session
 cookies. The existing exact trusted-origin list and per-worktree cookie prefix
@@ -80,10 +86,11 @@ by the public `/api/auth/providers` availability endpoint.
 ## Verification
 
 `run -- npm test` exercises the real OAuth routes with synthetic Google responses:
-account linking, returning sessions, password compatibility, ownership, private
-signup, unverified emails, state validation, and cross-origin rejection.
+automatic account creation, account linking, returning sessions, password
+compatibility, ownership, disabled email/password signup, unverified emails,
+state validation, and cross-origin rejection.
 `run -- npm run test:browser` covers the Google button, redirects, cancellation,
 failures, and email fallback. These tests do not call Google or prove that a live
 client/consent configuration works. After configuring a client, verify live sign-in
-with an invited reader through the exact Browser URL, including session persistence
+with a reader through the exact Browser URL, including session persistence
 and an authenticated write.

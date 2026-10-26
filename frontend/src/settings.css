@@ -1,0 +1,21 @@
+.settings-page { max-width: 1440px; margin: auto; padding: 40px 32px 64px; }
+.settings-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 28px; }
+.settings-heading h1 { font-size: 2.7rem; margin: 10px 0; }
+.settings-heading > svg { color: var(--accent); flex-shrink: 0; }
+.settings-navigation { display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+.settings-navigation button { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; background: transparent; color: var(--muted); border-bottom: 2px solid transparent; font: inherit; }
+.settings-navigation button.active { color: var(--accent); border-bottom-color: var(--accent); }
+.settings-account { max-width: 660px; padding: 28px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.settings-account h2 { font-size: 1.6rem; margin-bottom: 8px; }
+.settings-account dl { margin: 24px 0; }
+.settings-account dl > div { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.settings-account dt { color: var(--muted); font-size: .85rem; margin-bottom: 6px; }
+.settings-account dd { margin: 0; overflow-wrap: anywhere; }
+.settings-account button { display: inline-flex; align-items: center; gap: 8px; }
+.settings-avatar { padding: 0; flex-shrink: 0; }
+.settings-avatar[aria-current] { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 1000px) { .settings-page { padding: 28px 20px 40px; } }
+@media (max-width: 760px) {
+  .settings-heading h1 { font-size: 2.2rem; }
+  .settings-account { padding: 20px; }
+}

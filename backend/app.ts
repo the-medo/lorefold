@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { auth, signInProviders, trustedOrigins } from "./auth.js";
 import { getWorkspace, listBooks, saveProgress } from "./library.js";
 import { pool } from "./db/client.js";
+import { assignTheme, deleteTheme, saveTheme, themeLibrary } from "./themes.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
 
 export const app = new Hono<{ Variables: { userId: string } }>();
@@ -48,6 +49,21 @@ async function jsonObject(request: Request): Promise<Record<string, unknown>> {
     throw new HTTPException(400, { message: "Send a JSON object." });
   }
 }
+app.get("/api/themes", async (c) => c.json(await themeLibrary(c.get("userId"), c.req.query("universeId"), c.req.query("bookId"))));
+app.post("/api/themes", async (c) => c.json({ theme: await saveTheme(c.get("userId"), await jsonObject(c.req.raw)) }, 201));
+app.put("/api/themes/:id", async (c) => c.json({ theme: await saveTheme(c.get("userId"), await jsonObject(c.req.raw), c.req.param("id")) }));
+app.delete("/api/themes/:id", async (c) => {
+  await deleteTheme(c.get("userId"), c.req.param("id"));
+  return c.json({ deleted: true });
+});
+app.put("/api/preferences/theme", async (c) => {
+  await assignTheme(c.get("userId"), await jsonObject(c.req.raw));
+  return c.json({ saved: true });
+});
+app.put("/api/universes/:id/theme", async (c) => {
+  await assignTheme(c.get("userId"), await jsonObject(c.req.raw), c.req.param("id"));
+  return c.json({ saved: true });
+});
 app.get("/api/universes", async (c) => c.json({ universes: await listUniverses(c.get("userId")) }));
 app.post("/api/universes", async (c) => c.json({
   universe: await createUniverse(c.get("userId"), await jsonObject(c.req.raw)),

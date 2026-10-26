@@ -140,7 +140,8 @@ for each source, and identity matching becomes more complicated.
 ## Implemented foundation
 
 Milestone 1 provides **The Lantern at Bellweather**, private email/password sign-in
-with CLI-only account provisioning, persisted reading progress, chapter recaps,
+with CLI-provisioned password accounts and automatic account creation through
+verified Google sign-in, persisted reading progress, chapter recaps,
 both graph scopes, entity filters/search, and evidence details. Source text and
 future chapter titles are also filtered on the server. An unread book starts at
 chapter 0; analysis is already complete and does not advance reading progress.

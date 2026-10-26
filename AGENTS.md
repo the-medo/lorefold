@@ -22,6 +22,12 @@ allow authorized downloads. EPUB extraction, workers, R2/AI providers, and produ
 deployment are not implemented. Never display an upload as analyzed or readable
 chapters until extraction actually exists.
 
+Verified Google sign-in automatically creates a new account with an empty private
+library; it must not require an invitation or manual provisioning. Existing users
+with the same email retain their account and data. Public email/password signup
+remains disabled; password accounts are privately provisioned. Reject unverified
+Google emails on creation, linking, and subsequent sign-in.
+
 ## Worktree development
 
 Bootstrap every new Linux/WSL checkout or linked worktree with:

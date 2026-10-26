@@ -12,6 +12,8 @@ test("Google login starts from the server with a fixed same-origin return path",
   await page.route("https://accounts.google.com/**", (route) => route.fulfill({ contentType: "text/html", body: "<h1>Synthetic Google sign-in</h1>" }));
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.getByText("New here? Google creates your account automatically.")).toBeVisible();
+  await expect(page.getByText(/invitation/i)).toHaveCount(0);
   await page.screenshot({ path: "test-results/sign-in-google-desktop.png", fullPage: true });
   await page.getByRole("button", { name: "Continue with Google" }).click();
   await expect(page).toHaveURL(/^https:\/\/accounts\.google\.com\//);
@@ -44,13 +46,15 @@ test("email remains available when Google is disabled or provider discovery fail
     await discovery;
     await expect(page.getByRole("button", { name: "Open my space" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Continue with Google" })).toHaveCount(0);
+    await expect(page.getByText("New here? Google creates your account automatically.")).toHaveCount(0);
     await page.unroute("**/api/auth/providers");
   }
 });
 
 test("OAuth failures give a safe explanation without rendering provider messages", async ({ page }) => {
   for (const [code, message] of [
-    ["signup_disabled", "same email as your Lorefold invitation"],
+    ["account_not_linked", "could not be linked"],
+    ["signup_disabled", "could not be completed"],
     ["google_email_unverified", "verified email address"],
     ["unknown-provider-error", "could not be completed"],
   ]) {

@@ -42,7 +42,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Welcome back." }),
+    page.getByRole("heading", { name: "Welcome to Lorefold." }),
   ).toBeVisible();
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -190,7 +190,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
   await expect(page.getByText("Chapter 1 of 3 completed")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(
-    page.getByRole("heading", { name: "Welcome back." }),
+    page.getByRole("heading", { name: "Welcome to Lorefold." }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });

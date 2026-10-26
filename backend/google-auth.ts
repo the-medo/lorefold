@@ -8,7 +8,7 @@ export function googleProvider(env: NodeJS.ProcessEnv) {
   return {
     clientId,
     clientSecret,
-    disableSignUp: true,
+    disableSignUp: false,
     prompt: "select_account" as const,
     accessType: "online" as const,
   };
