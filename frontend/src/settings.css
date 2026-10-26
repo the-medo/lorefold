@@ -14,8 +14,57 @@
 .settings-account button { display: inline-flex; align-items: center; gap: 8px; }
 .settings-avatar { padding: 0; flex-shrink: 0; }
 .settings-avatar[aria-current] { outline: 2px solid var(--accent); outline-offset: 3px; }
+.settings-account > button + button { margin-left: 12px; }
+.ai-settings { display: grid; gap: 24px; max-width: 1300px; }
+.ai-settings .settings-account { max-width: none; min-width: 0; }
+.ai-analysis-layout { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.7fr); gap: 32px; margin-top: 28px; }
+.ai-analysis-choice { min-width: 0; }
+.ai-model-fields { display: grid; gap: 20px; margin: 0 0 16px; }
+.ai-analysis-choice .primary { margin-top: 16px; }
+.ai-comparison { min-width: 0; border-left: 1px solid var(--border); padding-left: 28px; }
+.ai-comparison > .muted { margin-top: 6px; font-size: .85rem; }
+.ai-comparison-selection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 14px; margin: 16px 0; background: var(--surface-alt); border-radius: 8px; font-size: .85rem; }
+.ai-comparison-selection span { color: var(--muted); }
+.ai-comparison-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.ai-comparison-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ai-comparison table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.ai-comparison caption { text-align: left; padding: 12px; color: var(--muted); font-size: .75rem; }
+.ai-comparison th, .ai-comparison td { padding: 12px 10px; border-top: 1px solid var(--border); text-align: right; vertical-align: middle; white-space: nowrap; }
+.ai-comparison th:first-child { text-align: left; }
+.ai-comparison thead th { color: var(--muted); font-weight: 550; font-size: .75rem; }
+.ai-comparison thead span { font-weight: 400; }
+.ai-comparison tbody th { white-space: normal; min-width: 124px; font-weight: 550; }
+.ai-comparison .is-selected { background: var(--surface-alt); }
+.ai-comparison .is-selected th { box-shadow: inset 3px 0 var(--accent); }
+.ai-comparison-badge { display: block; color: var(--accent); font-size: .7rem; font-weight: 650; margin-top: 4px; }
+.ai-comparison-reasoning { display: block; margin-top: 4px; color: var(--muted); font-size: .7rem; }
+.ai-comparison-notes { color: var(--muted); font-size: .8rem; }
+.ai-comparison-notes p { margin-top: 12px; }
+.ai-comparison-scroll-hint { display: none; }
+.ai-model-fields label { display: grid; gap: 8px; font-weight: 600; }
+.ai-model-fields select { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--background); color: var(--text); font: inherit; }
+.ai-connection-status, .ai-external { display: flex; align-items: center; gap: 8px; }
+.ai-connection-status { margin-top: 24px; }
+.ai-external { width: fit-content; margin: 16px 0; color: var(--accent); }
+.ai-connection-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.ai-settings .settings-account .ai-chatgpt-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #111; color: #fff; border: 1px solid #777; padding: 12px 20px; border-radius: 8px; text-decoration: none; font: inherit; font-weight: 600; }
+.ai-chatgpt-button:disabled { opacity: .5; }
+.ai-footnote { color: var(--muted); font-size: .85rem; margin-top: 24px; }
+.ai-notice, .ai-connect-steps { padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.ai-connect-steps { margin-top: 24px; }
+.ai-connect-steps pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--background); padding: 16px; border-radius: 8px; font-size: .85rem; }
+@media (max-width: 1180px) {
+  .ai-analysis-layout { grid-template-columns: 1fr; }
+  .ai-model-fields { grid-template-columns: 1fr 1fr; }
+  .ai-comparison { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }
+}
 @media (max-width: 1000px) { .settings-page { padding: 28px 20px 40px; } }
 @media (max-width: 760px) {
   .settings-heading h1 { font-size: 2.2rem; }
   .settings-account { padding: 20px; }
+  .settings-navigation { flex-wrap: wrap; }
+  .settings-navigation button { padding: 12px; }
+  .ai-model-fields { grid-template-columns: 1fr; }
+  .ai-comparison-scroll-hint { display: block; margin-top: 8px; color: var(--muted); font-size: .8rem; }
+  .settings-account > button + button { margin: 12px 0 0; }
 }

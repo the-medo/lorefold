@@ -167,6 +167,17 @@ No R2, chapter extraction, model, or external AI calls are used. Processing prog
 displayed separately from reading progress. The API owns the spoiler boundary;
 changing a browser URL cannot fetch knowledge beyond saved progress.
 
+A separate [book model benchmark](docs/book-benchmark.md) can inspect EPUB chapters
+and compare six AI models before choosing an analysis provider. Run
+`npm run benchmark:book` for a free deterministic mock test. Live calls require
+explicit development credentials and opt-in; private reports remain local. This
+CLI does not analyze uploaded books in the app or populate their graphs.
+The runner also supports a separate **ChatGPT plan** connection for personal
+development: `npm run chatgpt:plan -- login`, then
+`npm run benchmark:book -- --provider chatgpt-plan --plan`. Sol/Astra requests
+use the connected account's shared allowance; see the guide for remote sign-in,
+usage limits, and explicit live opt-in.
+
 `npm run build` builds React and compiles the Hono server. `npm start` serves both
 from one server after setting `DATABASE_URL`, `HOST`, `PORT`, `APP_ORIGIN`,
 `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, and `AUTH_COOKIE_PREFIX`. The two origins
@@ -205,6 +216,17 @@ ignored `test-results/`. Tests never truncate a database or touch other worktree
 
 `npm run db:generate -- --name descriptive_change` generates a checked-in Drizzle
 migration after a schema change. Apply it through the worktree launcher as above.
+
+## AI preferences and personal ChatGPT connections
+
+User settings → **AI & connections** saves each reader’s default analysis model
+and effort. The initial default is **Astra high**; Sol 6.1 and Astra each offer
+medium, high, and extra high. These are preferences for the future import worker;
+uploads still store files without running analysis.
+
+Personal development installations can enable a separate ChatGPT connection for
+each Lorefold account. See [connection setup](docs/chatgpt-connections.md).
+The earlier command-line benchmark connection is independent of website accounts.
 
 ## Inspiration and status
 

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { ThemeConfig } from "../../shared/themes.js";
+import type { AnalysisPreference } from "../../shared/ai.js";
 import {
   pgTable,
   text,
@@ -74,6 +75,15 @@ export const verification = pgTable("auth_verification", {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+export const userAiPreferences = pgTable("user_ai_preferences", {
+  userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  model: text().$type<AnalysisPreference["model"]>().notNull().default("gpt-6-astra"),
+  effort: text().$type<AnalysisPreference["effort"]>().notNull().default("high"),
+}, (t) => [
+  check("analysis_model", sql`${t.model} in ('gpt-6-astra', 'gpt-6.1-sol')`),
+  check("analysis_effort", sql`${t.effort} in ('medium', 'high', 'xhigh')`),
+]);
 
 export const universes = pgTable("universes", {
   id: text().primaryKey(),

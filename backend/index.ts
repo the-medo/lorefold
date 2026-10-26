@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { app } from "./app.js";
 import { pool } from "./db/client.js";
+import { chatgptConnections } from "./ai.js";
 import { fileURLToPath } from "node:url";
 
 // Works from both backend/index.ts and dist/server/backend/index.js.
@@ -26,8 +27,10 @@ server.on("error", (error) => {
 });
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
+    // Abort a login even while its HTTP start request is waiting for discovery.
+    const connectionsClosed = chatgptConnections.close();
     server.close(() => {
-      void pool.end().then(() => process.exit(0));
+      void connectionsClosed.then(() => pool.end()).then(() => process.exit(0));
     });
     setTimeout(() => process.exit(1), 5000).unref();
   });
