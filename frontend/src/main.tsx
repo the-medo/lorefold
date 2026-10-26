@@ -37,7 +37,12 @@ import { GraphBoundary } from "./GraphBoundary.js";
 import { entityColors } from "./graph-theme.js";
 import { BookCard, Cover } from "./Books.js";
 import { UniversesPage, UniversePage } from "./Universes.js";
+import { SettingsPage } from "./Settings.js";
+import { ThemeProvider, applyDocumentTheme } from "./theme.js";
+import { defaultTheme } from "../../shared/themes.js";
 import "./style.css";
+import "./themes.css";
+import "./fonts.css";
 
 const StoryGraph = lazy(() => import("./Graph.js").then((module) => ({ default: module.StoryGraph })));
 
@@ -72,7 +77,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
     const code = new URLSearchParams(window.location.search).get("error");
     if (!code) return "";
     if (code === "access_denied") return "Google sign-in was cancelled. Try again or use email.";
-    if (code === "signup_disabled" || code === "account_not_linked") return "Use the Google account with the same email as your Lorefold invitation, or sign in with email.";
+    if (code === "account_not_linked") return "This Google account could not be linked. Try signing in with your existing login method.";
     if (code === "google_email_unverified") return "Use a Google account with a verified email address, or sign in with email.";
     return "Google sign-in could not be completed. Please try again or use email.";
   });
@@ -153,7 +158,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
       <section className="signin-form">
         <div className="signin-box">
           <span className="eyebrow">A PLACE FOR YOUR STORIES</span>
-          <h2>Welcome back.</h2>
+          <h2>Welcome to Lorefold.</h2>
           <p className="muted">Sign in to your private reading space.</p>
           {googleEnabled && <div className="social-signin">
             <button type="button" className="google-signin" onClick={signInWithGoogle} disabled={busy !== null}>
@@ -165,6 +170,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
               </svg>
               {busy === "google" ? "Opening Google…" : "Continue with Google"}
             </button>
+            <p className="muted">New here? Google creates your account automatically.</p>
             <div className="signin-divider">or use email</div>
           </div>}
           {error && <ErrorMessage message={error} />}
@@ -195,8 +201,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
             </button>
           </form>
           <p className="private-note">
-            <LockKeyhole size={14} /> A private library. Access is by
-            invitation.
+            <LockKeyhole size={14} /> Your books and reading progress stay private.
           </p>
         </div>
       </section>
@@ -720,19 +725,25 @@ function BookPage({
   );
 }
 
+function currentPath() {
+  // Preserve old theme bookmarks while moving the editor into user settings.
+  if (window.location.pathname === "/themes") window.history.replaceState({}, "", `/settings/themes${window.location.search}${window.location.hash}`);
+  return window.location.pathname + window.location.search;
+}
+
 function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [error, setError] = useState("");
-  const [path, setPath] = useState(
-    window.location.pathname + window.location.search,
-  );
+  const [path, setPath] = useState(currentPath);
   const [authRevision, setAuthRevision] = useState(0);
   useEffect(() => {
-    const handler = () =>
-      setPath(window.location.pathname + window.location.search);
+    const handler = () => {
+      if (window.dispatchEvent(new Event("lorefold:navigate", { cancelable: true }))) setPath(currentPath());
+      else window.history.pushState({}, "", path);
+    };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, []);
+  }, [path]);
   useEffect(() => {
     let cancelled = false;
     setError("");
@@ -747,15 +758,17 @@ function App() {
       cancelled = true;
     };
   }, [authRevision]);
-  function navigate(target: string) {
+  function navigate(target: string, force = false) {
+    if (!force && !window.dispatchEvent(new Event("lorefold:navigate", { cancelable: true }))) return;
     window.history.pushState({}, "", target);
     setPath(target);
   }
   async function signOut() {
+    if (!window.dispatchEvent(new Event("lorefold:navigate", { cancelable: true }))) return;
     try {
       await api("/auth/sign-out", { method: "POST", body: "{}" });
       setUser(null);
-      navigate("/");
+      navigate("/", true);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -779,11 +792,12 @@ function App() {
   const bookMatch = url.pathname.match(/^\/books\/([^/]+)$/);
   const universeMatch = url.pathname.match(/^\/universes\/([^/]+)$/);
   const inLibrary = url.pathname === "/library" || !!bookMatch;
+  const inSettings = url.pathname === "/settings" || url.pathname === "/settings/themes";
   const chapter = url.searchParams.has("chapter")
     ? Number(url.searchParams.get("chapter"))
     : undefined;
   return (
-    <div className="app-shell">
+    <ThemeProvider path={path}><div className="app-shell">
       <header className="app-header">
         <button
           className="brand-button"
@@ -793,7 +807,7 @@ function App() {
           <Brand />
         </button>
         <nav aria-label="Main navigation">
-          <button className={`header-nav ${!inLibrary ? "active" : ""}`} aria-current={!inLibrary ? "page" : undefined} onClick={() => navigate("/")}>
+          <button className={`header-nav ${!inLibrary && !inSettings ? "active" : ""}`} aria-current={!inLibrary && !inSettings ? "page" : undefined} onClick={() => navigate("/")}>
             <Globe2 size={17} /> Universes
           </button>
           <button className={`header-nav ${inLibrary ? "active" : ""}`} aria-current={inLibrary ? "page" : undefined} onClick={() => navigate("/library")}>
@@ -804,9 +818,9 @@ function App() {
           <span className="private-label">
             <LockKeyhole size={13} /> Private space
           </span>
-          <span className="avatar" title={user.name}>
+          <button className="avatar settings-avatar" title="User settings" aria-label="User settings" aria-current={inSettings ? "page" : undefined} onClick={() => navigate("/settings")}>
             {user.name.charAt(0).toUpperCase()}
-          </span>
+          </button>
           <button
             className="icon-button"
             aria-label="Sign out"
@@ -828,11 +842,12 @@ function App() {
         <UniversePage key={universeMatch[1]} id={decodeURIComponent(universeMatch[1])} navigate={navigate} />
       ) : inLibrary ? (
         <LibraryPage openBook={(id) => navigate(`/books/${encodeURIComponent(id)}`)} />
-      ) : <UniversesPage navigate={navigate} />}
-    </div>
+      ) : inSettings ? <SettingsPage user={user} section={url.pathname === "/settings/themes" ? "themes" : "account"} navigate={navigate} /> : <UniversesPage navigate={navigate} />}
+    </div></ThemeProvider>
   );
 }
 
+applyDocumentTheme(defaultTheme);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

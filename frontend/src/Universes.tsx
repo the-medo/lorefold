@@ -4,6 +4,7 @@ import type { Book, Universe, UniverseWorkspace } from "../../shared/contracts.j
 import { api } from "./api.js";
 import { UniverseMap } from "./UniverseMap.js";
 import { BookCard } from "./Books.js";
+import { ThemePicker } from "./theme.js";
 
 function ErrorNote({ error }: { error: string }) {
   return error ? <p className="error" role="alert">{error}</p> : null;
@@ -165,7 +166,7 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
         <button className="back-link" onClick={() => navigate("/")}><ArrowLeft size={16} />Universes</button>
         {data && <><ChevronRight size={14} aria-hidden="true" /><h1>{data.universe.name}</h1></>}
       </div>
-      {data && <button className="primary" aria-label="Upload resource" onClick={() => setModal("upload")}><Upload size={17} />Upload</button>}
+      {data && <div className="universe-actions"><ThemePicker universeId={id} /><button className="primary" aria-label="Upload resource" onClick={() => setModal("upload")}><Upload size={17} />Upload</button></div>}
     </div>
     <ErrorNote error={error} />
     {error && <button className="secondary" onClick={() => setRevision((n) => n + 1)}>Try again</button>}

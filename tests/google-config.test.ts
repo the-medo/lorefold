@@ -12,5 +12,5 @@ test("Google stays optional but partial credentials fail without exposing secret
   }
   const provider = googleProvider({ GOOGLE_CLIENT_ID: " test-client ", GOOGLE_CLIENT_SECRET: " test-secret " });
   assert.equal(provider?.clientId, "test-client");
-  assert.equal(provider?.disableSignUp, true);
+  assert.equal(provider?.disableSignUp, false);
 });

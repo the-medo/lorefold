@@ -5,15 +5,18 @@ import { Focus, Maximize, Minimize, Minus, Plus, RotateCcw } from "lucide-react"
 import type { Entity, Relationship } from "../../shared/contracts.js";
 import { layoutGraph } from "./graph-layout.js";
 
-import { entityColors } from "./graph-theme.js";
+import { useTheme } from "./theme.js";
 
-type MapActions = { zoom: (factor: number) => void; reset: () => void; select: (id: string | null, focus?: boolean) => void };
+type MapActions = { zoom: (factor: number) => void; reset: () => void; select: (id: string | null, focus?: boolean) => void; recolor: () => void };
 type NodeView = { entity: Entity; mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>; label: HTMLButtonElement; radius: number };
 type EdgeView = { relationship: Relationship; line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>; arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>; label: HTMLSpanElement; position: THREE.Vector3 };
 
 export function StoryGraph({ entities, relationships, selectedId = null, onSelect }: {
   entities: Entity[]; relationships: Relationship[]; selectedId?: string | null; onSelect: (id: string) => void;
 }) {
+  const theme = useTheme();
+  const palette = useRef(theme.colors);
+  palette.current = theme.colors;
   const host = useRef<HTMLDivElement>(null);
   const labels = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -80,14 +83,14 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     let tween: { start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | null = null;
     let hovered: string | null = null;
     const neighbors = new Set<string>();
-    const ringMaterial = new THREE.MeshBasicMaterial({ color: "#7a69a4", transparent: true, opacity: 0.8, depthTest: false });
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: palette.current.mapSelection, transparent: true, opacity: 0.8, depthTest: false });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), ringMaterial);
     ring.visible = false;
     scene.add(ring);
 
     for (const entity of entities) {
       const radius = entity.kind === "character" ? 7.5 : 6;
-      const material = new THREE.MeshStandardMaterial({ color: entityColors[entity.kind], roughness: 0.38, metalness: 0.08, transparent: true });
+      const material = new THREE.MeshStandardMaterial({ color: palette.current[entity.kind], roughness: 0.38, metalness: 0.08, transparent: true });
       const mesh = new THREE.Mesh(geometry, material);
       const p = positions.get(entity.id)!;
       mesh.position.set(p.x, p.y, p.z);
@@ -118,8 +121,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       side.normalize();
       const midpoint = start.clone().lerp(end, 0.5).addScaledVector(side, 10 + lane * 10);
       const curve = new THREE.QuadraticBezierCurve3(start.clone(), midpoint, end.clone());
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(32)), new THREE.LineBasicMaterial({ color: "#aaa1b7", transparent: true, opacity: 0.45 }));
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4, 8), new THREE.MeshBasicMaterial({ color: "#aaa1b7", transparent: true, opacity: 0.65 }));
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(32)), new THREE.LineBasicMaterial({ color: palette.current.mapEdge, transparent: true, opacity: 0.45 }));
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4, 8), new THREE.MeshBasicMaterial({ color: palette.current.mapEdge, transparent: true, opacity: 0.65 }));
       const t = Math.max(0.5, 1 - (target.radius + 4) / Math.max(start.distanceTo(end), 1));
       arrow.position.copy(curve.getPoint(t));
       arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangent(t).normalize());
@@ -175,7 +178,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       for (const edge of edgeViews) {
         const connected = edge.relationship.source === active || edge.relationship.target === active;
         edge.line.material.opacity = active ? connected ? 0.9 : 0.08 : 0.4;
-        edge.line.material.color.set(connected ? "#79669f" : "#aaa1b7");
+        edge.line.material.color.set(connected ? palette.current.mapSelection : palette.current.mapEdge);
+        edge.arrow.material.color.copy(edge.line.material.color);
         edge.arrow.material.opacity = active ? connected ? 1 : 0.1 : 0.65;
         edge.label.dataset.connected = String(connected);
       }
@@ -312,7 +316,11 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     document.addEventListener("visibilitychange", invalidate);
     reducedMotion.addEventListener("change", motionChanged);
     labelLayer.style.visibility = "visible";
-    actions.current = { zoom, reset, select: highlight };
+    actions.current = { zoom, reset, select: highlight, recolor: () => {
+      for (const node of nodes.values()) node.mesh.material.color.set(palette.current[node.entity.kind]);
+      ringMaterial.color.set(palette.current.mapSelection);
+      highlight(active);
+    } };
     highlight(selected.current);
     invalidate();
     return () => {
@@ -340,6 +348,9 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       actions.current = null;
     };
   }, [entities, relationships, retry, hintId]);
+
+  // Recolor existing materials without resetting orbit, selection, or GPU resources.
+  useLayoutEffect(() => { actions.current?.recolor(); }, [theme.colors]);
 
   useLayoutEffect(() => {
     actions.current?.select(selectedId, !!selectedId);

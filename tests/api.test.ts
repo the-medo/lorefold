@@ -81,7 +81,7 @@ after(async () => {
   }
 });
 
-test("private APIs require authentication and public signup is disabled", async () => {
+test("private APIs require authentication and public email/password signup is disabled", async () => {
   assert.equal((await request("/books", {}, false)).status, 401);
   assert.equal(
     (await request(`/books/${bookId}/workspace`, {}, false)).status,

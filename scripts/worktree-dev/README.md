@@ -249,9 +249,11 @@ scripts/worktree-dev/lorefold-worktree-dev configure-google \\
   --from-env /home/medo/dev/lorefold/.env
 ```
 
-Every worktree still needs the Google sign-in implementation, its own invited user,
-and its exact Browser URL plus `/api/auth/callback/google` registered as a redirect
-URI on that client. New frontend ports are restricted to 15184–15190. Register
+Every worktree still needs the Google sign-in implementation and its exact Browser
+URL plus `/api/auth/callback/google` registered as a redirect URI on that client.
+Verified Google sign-in creates the user's account in that worktree automatically;
+accounts and libraries remain isolated between worktrees.
+New frontend ports are restricted to 15184–15190. Register
 all seven complete callback URLs once on the development client. Older worktrees
 that retain ports outside this range still need their existing callback registered
 until their URLs are deliberately migrated.

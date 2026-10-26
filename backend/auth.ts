@@ -38,10 +38,10 @@ export const auth = betterAuth({
     accountLinking: {
       enabled: true,
       allowDifferentEmails: false,
-      // Only the private provisioning command can create local accounts; there
-      // is no public signup or local email-verification flow. Google's verified
-      // email can therefore link an invited reader to their existing library.
-      // Revisit this policy before enabling public registration.
+      // Password accounts are privately provisioned; Google creates new users
+      // only after verifying their email. A verified Google identity can also
+      // link to an existing password account with the same email.
+      // Revisit this policy before enabling public email/password registration.
       requireLocalEmailVerified: false,
       trustedProviders: [],
     },

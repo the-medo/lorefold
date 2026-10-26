@@ -79,22 +79,23 @@ to Hono and both application listeners stay on loopback.
 
 Sign-in details are saved in `.lorefold/demo-account.json`, readable only by the
 local user and ignored by Git. The password is randomly generated per worktree;
-there is no public registration or shared default password. Demo setup is restricted
+there is no public email/password registration or shared default password. Demo setup is restricted
 to the local development launcher and preserves existing progress when repeated.
 
-For your own account instead, run the interactive private provisioning command
-and seed the book into that account:
+For your own account, use **Continue with Google** once Google sign-in is configured.
+Your first verified Google sign-in creates an account automatically with an empty
+private library. To create an email/password account, run the interactive private
+provisioning command. Either kind of account can have the sample book seeded into it:
 
 ```bash
 scripts/worktree-dev/lorefold-worktree-dev run -- npm run user:create
 scripts/worktree-dev/lorefold-worktree-dev run -- npm run db:seed -- you@example.com
 ```
 
-Invited users can also sign in with Google using the same email address once a
-Google web OAuth client is configured. Their existing library and progress are
-preserved. See [Google sign-in setup](docs/google-sign-in.md) for credentials,
-exact callback URLs, and the private account-linking policy. Email/password
-sign-in remains available when Google is not configured.
+Google sign-in also links to an existing email/password account with the same email,
+preserving its library and progress. See [Google sign-in setup](docs/google-sign-in.md)
+for credentials, exact callback URLs, and account creation and linking behavior.
+Existing email/password accounts remain available when Google is not configured.
 
 The first page is **Universes**. Open **Bellweather**, then **The Lantern at
 Bellweather**, select Chapter 1 under **I've finished**, and
@@ -111,6 +112,38 @@ available when WebGL is unavailable. Reduced-motion settings disable camera tran
 
 The selected Lorefold icon is **Folded worlds**, available at `/brand/lorefold.svg`.
 The five original SVG options and a ZIP download are at `/brand/icon-options/index.html`.
+
+Open your account avatar → **User settings → Themes** to create and save your own
+appearance. User settings also shows your account name and email. Start with Paper or Midnight,
+then choose page/panel colors, separate interface/heading/reading fonts, text sizes,
+reading line spacing, rounded corners, interface spacing, and 3D map colors. The live
+preview uses original example content and stays separate from your active theme
+until you save and select it. Each font picker offers 28 choices: 23 locally bundled
+families plus five system stacks, grouped into sans serif, serif, monospace, and
+system fonts. Regular, bold, and italic faces load only when used, with no external
+font requests. See the [font catalog and pairings](docs/theme-fonts.md).
+The editor reports text/button contrast and protects unsaved changes.
+
+The **Theme generator** builds a complete starting point from Light or Dark mode,
+a base color, and a Literary, Modern, or Terminal style. It derives tinted surfaces,
+readable text/button colors, distinct map colors, paired fonts, sizes, spacing, and
+corners. Each click of **Generate theme** produces a fresh variation while keeping
+your selected mode, base color, and style. Fonts cycle through 23 curated combinations
+(10 Literary, 9 Modern, 4 Terminal); consecutive variations change all three font
+roles, and the editor names the matching pairing. Browse variations, adjust any detail,
+then save and select the theme. Generation runs locally and does not save or apply
+a theme automatically. Cycling generated drafts needs no confirmation; replacing
+manual edits does. **Revert changes** restores the last saved state. The base color
+may be adjusted for contrast.
+
+Choose **Main page & library** under User settings → Themes to set your account default.
+Inside a universe, choose **Universe theme** to override it. Books inherit their
+universe's theme even when opened from My Library; unassigned books use the account
+default. Themes and assignments are private and saved in PostgreSQL across sessions
+and devices. Editing a saved theme updates every place that uses it. Duplicate it
+before making an independent variation. Deleting a theme removes its assignments:
+universes inherit the account default, and a deleted account default falls back to
+Lorefold's original theme. **Revert changes** restores the editor's last saved state.
 
 Create more universes to organize your own sources. Inside a universe, upload a
 book (EPUB, PDF, TXT, or Markdown) or reference document (PDF, TXT, or Markdown), up
