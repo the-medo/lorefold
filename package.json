@@ -10,7 +10,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:api": "tsx watch backend/index.ts",
     "dev:web": "vite --config frontend/vite.config.ts",
-    "build": "vite build --config frontend/vite.config.ts && tsc -p tsconfig.server.json && mkdir -p dist/server/scripts/book-benchmark && cp scripts/book-benchmark/extract_epub.py dist/server/scripts/book-benchmark/",
+    "build": "vite build --config frontend/vite.config.ts && tsc -p tsconfig.server.json && mkdir -p dist/server/scripts/book-benchmark dist/server/migrations && cp scripts/book-benchmark/extract_epub.py dist/server/scripts/book-benchmark/ && cp -R migrations/. dist/server/migrations/",
     "start": "node dist/server/backend/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

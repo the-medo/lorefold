@@ -186,8 +186,10 @@ usage limits, and explicit live opt-in.
 from one server after setting `DATABASE_URL`, `HOST`, `PORT`, `APP_ORIGIN`,
 `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, and `AUTH_COOKIE_PREFIX`. The two origins
 must match the URL used in the browser. Set `NODE_ENV=production` and use HTTPS for
-a hosted environment. Production deployment, backups, and account recovery belong
-to milestone 5; the development launcher intentionally enforces development settings.
+a hosted environment. The [Coolify deployment guide](docs/coolify.md) covers the
+production Dockerfile, resource limits, migrations, private storage, and sign-in.
+Backups must be configured on the hosted installation; account recovery is still
+unimplemented. The development launcher intentionally enforces development settings.
 
 See [local development commands](scripts/worktree-dev/README.md) and [AGENTS.md](AGENTS.md).
 `down` stops the app, its private route, and PostgreSQL; data is preserved.
@@ -238,5 +240,6 @@ Inspired by the mindmap-style exploration in [AI Coding Dictionary](https://www.
 **Status:** Milestone 1 implemented: React/Hono application, private Better Auth
 sign-in, Drizzle migrations, a user-owned library, saved progress, chapter recaps,
 and an interactive Three.js 3D graph with evidence. EPUB import, background jobs,
-The private R2 adapter and background chapter analysis are implemented with explicit
-configuration. Hosted deployment remains a later milestone.
+the private R2 adapter, and background chapter analysis are implemented with explicit
+configuration. Production container packaging and a Coolify setup guide are available;
+the hosted installation still needs to be configured and verified.

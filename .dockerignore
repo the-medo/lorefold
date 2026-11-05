@@ -1,0 +1,29 @@
+# Allow only build inputs into the context, including on a developer's machine.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.server.json
+!frontend/
+!frontend/**
+!backend/
+!backend/**
+!shared/
+!shared/**
+!scripts/
+!scripts/**
+!migrations/
+!migrations/**
+
+# Local configuration, credentials, source material, and generated files.
+**/.env*
+**/.lorefold
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/*.epub
+**/*.pdf
+**/*.dump
+**/*.sql.gz

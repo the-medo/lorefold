@@ -6,6 +6,6 @@
     "rootDir": ".",
     "sourceMap": true
   },
-  "include": ["backend", "shared"],
-  "exclude": ["frontend", "tests", "scripts"]
+  "include": ["backend", "shared", "scripts/migrate.ts", "scripts/create-user.ts"],
+  "exclude": ["frontend", "tests"]
 }

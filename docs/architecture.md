@@ -23,6 +23,11 @@ Do not share SWUBASE application tables, credentials, or migration history.
 
 The web app, database, and import worker are the three runtime services we operate.
 The worker can use the same application image with a different entry point.
+The production Dockerfile exposes `web` and `worker` targets that share the runtime
+layers. The web target applies packaged migrations before serving traffic; the
+worker starts only its job loop. See the [Coolify guide](coolify.md) for deployment,
+resource limits, storage, and verification. Packaging does not establish that a
+hosted installation has been configured or verified.
 Milestone 1 uses Node.js 24+, Hono, and TypeScript. The queue uses PostgreSQL job/part rows, a session advisory lock, and fencing tokens;
 no extra queue service is required.
 
