@@ -200,11 +200,11 @@ Personal ChatGPT-plan connections remain disabled in production. See
 ## 6. Final domain and operations
 
 When Cloudflare DNS is ready, set the web domain to
-`https://lorefound.the-medo.com`, update both `APP_ORIGIN` and `BETTER_AUTH_URL` to
+`https://lorefold.the-medo.com`, update both `APP_ORIGIN` and `BETTER_AUTH_URL` to
 that same origin, and register Google's final callback:
 
 ```text
-https://lorefound.the-medo.com/api/auth/callback/google
+https://lorefold.the-medo.com/api/auth/callback/google
 ```
 
 Provision/verify the origin certificate and, if enabling Cloudflare's proxy, use
@@ -217,6 +217,41 @@ Schedule private PostgreSQL backups outside the VPS using Coolify, and verify a
 restore. R2 objects do not replace the database backup. Keep only the web service
 public; the database and worker use internal networking. Review resource usage
 during an import as well as at idle.
+
+## 7. Automatic deployments from main
+
+After merging the deployment files, update **both** `lorefold-web` and
+`lorefold-worker` under **Source**: set **Branch** to `main` and **Commit SHA** to
+`HEAD`, then save. Preserve their respective `web` and `worker` Docker build
+stage targets. Deploy the web application once, wait for it to become healthy,
+then deploy the worker so the initial switch uses the current database schema.
+
+For the public-repository setup in this guide, configure one GitHub push webhook:
+
+1. In both applications, enable **Advanced → Auto Deploy**. Keep preview
+   deployments disabled unless they are deliberately configured separately.
+2. Open **Webhooks → Manual Git Webhooks** on each application. Set the same
+   newly generated, private **GitHub Webhook Secret** on both and save. Copy the
+   **GitHub** URL from that section; the **Deploy Webhook (auth required)** field
+   is a different API endpoint and is not the GitHub payload URL.
+3. Open the [repository's webhook settings](https://github.com/the-medo/lorefold/settings/hooks)
+   and select **Add webhook**. Paste the copied URL into **Payload URL**, choose
+   `application/json`, and enter the matching secret. Keep SSL verification and
+   **Active** enabled, and select **Just the push event**.
+4. On the next push or merge to `main`, inspect the webhook's **Recent Deliveries**
+   and both applications' deployment logs. Verify that both deploy the new commit
+   and that the web health check and a small synthetic import succeed. The GitHub
+   webhook's initial ping alone does not verify deployment.
+
+Coolify beta.431 matches the repository and branch, validates each application's
+webhook secret, and queues deployments for matching applications with Auto Deploy
+enabled. One webhook can therefore update both Lorefold applications. The webhook
+secret belongs in Coolify and GitHub settings, never in this repository.
+
+If the applications instead use an installed GitHub App source, its integration
+handles webhook delivery; enable Auto Deploy and select `main` on both without
+adding a duplicate manual webhook. Automatic deployments do not wait for CI
+checks, so run the required checks before merging into `main`.
 
 ## Local verification
 
@@ -242,3 +277,5 @@ context by an allowlist and are never copied into the runtime image.
 - [Coolify PostgreSQL](https://coolify.io/docs/databases/postgresql)
 - [Resource limits in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/resources/views/livewire/project/shared/resource-limits.blade.php)
 - [General settings in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/resources/views/livewire/project/application/general.blade.php)
+- [Manual Git webhooks](https://coolify.io/docs/applications/deployments/manual-webhooks)
+- [GitHub webhook handling in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/app/Http/Controllers/Webhook/Github.php)
