@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { HTTPException } from "hono/http-exception";
 import type { ChatGPTConnection, ConnectionAttempt, ConnectionProgress } from "../../shared/ai.js";
 import { PlanAuth } from "./auth.js";
+import { connectionStorage, DatabasePlanAuthStore } from "./database-store.js";
+import { pool } from "../db/client.js";
 
 type Client = Pick<PlanAuth, "login" | "status" | "logout">;
 type Configuration = { enabled: boolean; port: number; sshTarget: string | null };
@@ -11,6 +13,7 @@ type Pending = {
   progress: ConnectionProgress; finished: boolean; expires: number;
 };
 export function personalConnectionConfiguration(env: NodeJS.ProcessEnv): Configuration {
+  connectionStorage(env);
   const enabled = env.NODE_ENV !== "production" && env.LOREFOLD_CHATGPT_PERSONAL === "1";
   const port = Number(env.LOREFOLD_CHATGPT_CALLBACK_PORT ?? 15190);
   const sshTarget = env.LOREFOLD_CHATGPT_SSH_TARGET || null;
@@ -24,7 +27,10 @@ export function personalConnectionConfiguration(env: NodeJS.ProcessEnv): Configu
 // Never adopt the machine-wide CLI profile: it has no Lorefold account owner.
 export function accountAuth(userId: string) {
   const key = createHash("sha256").update(userId).digest("hex");
-  return new PlanAuth(resolve(".lorefold/chatgpt-accounts", key));
+  return new PlanAuth(resolve(".lorefold/chatgpt-accounts", key), fetch,
+    connectionStorage(process.env) === "database"
+      ? new DatabasePlanAuthStore(pool, userId, process.env.LOREFOLD_CHATGPT_ENCRYPTION_KEY)
+      : undefined);
 }
 
 export class PersonalChatGPTConnections {

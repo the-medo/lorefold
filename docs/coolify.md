@@ -211,6 +211,14 @@ configure both consistently. Existing mock jobs retain their original mode.
 Personal ChatGPT-plan connections remain disabled in production. See
 [book imports](book-imports.md) for recovery and provider details.
 
+Website ChatGPT credentials can be persisted in PostgreSQL without a shared app
+volume: set `LOREFOLD_CHATGPT_STORAGE=database` and the same dedicated
+`LOREFOLD_CHATGPT_ENCRYPTION_KEY` (64 hexadecimal characters) as runtime-only
+variables on web and worker. Apply the packaged migrations first. Keep the key
+outside PostgreSQL and preserve it across deployments. This configures storage
+only; it does not yet enable the owner-only production OAuth/provisioning flow or
+switch imports from mock. See [encrypted connection storage](chatgpt-connections.md#encrypted-postgresql-storage).
+
 ## 6. Final domain and operations
 
 When Cloudflare DNS is ready, set the web domain to

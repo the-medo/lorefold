@@ -145,10 +145,13 @@ Readers see progress and recorded token usage on the book page.
 
 Personal development installations can explicitly enable the OpenAI ChatGPT plan
 OAuth flow. The account settings API binds sign-in attempts to a Lorefold user and
-session; it validates the session again before saving the connection. Tokens live
-in a protected, ignored, worktree-local store per user, separate from the CLI
-benchmark's machine-wide profiles. Disconnect attempts revocation and clears local
-tokens. Credentials never enter frontend state or PostgreSQL preferences.
+session; it validates the session again before saving the connection. Website
+credentials use either a protected worktree-local file or an explicitly configured
+encrypted PostgreSQL store per user, separate from the CLI benchmark's machine-wide
+profiles. Database mode uses AES-256-GCM with an external runtime key and an
+account-scoped advisory lock to coordinate web/worker token refreshes. Disconnect
+attempts revocation and clears stored tokens. Credentials never enter frontend
+state or PostgreSQL preferences; only ciphertext enters the credential table.
 
 This personal integration is disabled in production. It does not replace the
 chosen Cloudflare gateway/worker deployment: hosted ChatGPT subscription access

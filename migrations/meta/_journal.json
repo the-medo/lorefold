@@ -50,6 +50,13 @@
       "when": 1793813892877,
       "tag": "0006_separate_identity_pass",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793901921846,
+      "tag": "0007_chatgpt_credentials",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -10,6 +10,8 @@ import * as s from "../backend/db/schema.js";
 import { provisionUser } from "../backend/provision-user.js";
 import { accountAuth, PersonalChatGPTConnections, personalConnectionConfiguration } from "../backend/chatgpt/connections.js";
 import type { PlanAuth } from "../backend/chatgpt/auth.js";
+import { PLAN_SCOPE } from "../backend/chatgpt/auth.js";
+import { DatabasePlanAuthStore } from "../backend/chatgpt/database-store.js";
 import { defaultAnalysisPreference } from "../shared/ai.js";
 
 if (!process.env.LOREFOLD_WORKTREE_ID) throw new Error("Use the worktree launcher.");
@@ -36,6 +38,38 @@ after(async () => {
       await rm(accountAuth(id).directory, { recursive: true, force: true });
     }
   } finally { await pool.end(); }
+});
+
+test("database account connections expose only the signed-in reader's metadata", async () => {
+  const previousMode = process.env.LOREFOLD_CHATGPT_STORAGE;
+  const previousKey = process.env.LOREFOLD_CHATGPT_ENCRYPTION_KEY;
+  const key = randomBytes(32).toString("hex");
+  process.env.LOREFOLD_CHATGPT_STORAGE = "database";
+  process.env.LOREFOLD_CHATGPT_ENCRYPTION_KEY = key;
+  try {
+    for (const [index, userId] of users.entries()) {
+      await new DatabasePlanAuthStore(pool, userId, key).locked(async (state, save) => {
+        state.profiles.account = { clientId: `oaiapp_fixture_${index}`, subject: `fixture_${index}`, email: `linked-${index}@example.invalid`,
+          tokens: { access: "private-fixture-access", refresh: "private-fixture-refresh", id: "private-fixture-id", expiresAt: Date.now() + 3600000, scopes: [PLAN_SCOPE, "resource.invoke"] } };
+        await save(state);
+      });
+    }
+    for (const [index, cookie] of cookies.entries()) {
+      const response = await request("/settings/ai", {}, cookie);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.chatgpt.email, `linked-${index}@example.invalid`);
+      assert.equal(body.chatgpt.connected, true);
+      assert.ok(!JSON.stringify(body).includes("private-fixture"));
+      assert.ok(!JSON.stringify(body).includes("ciphertext"));
+      assert.equal((await accountAuth(users[index]).access("account")).token, "private-fixture-access");
+    }
+    assert.equal((await request("/settings/ai", {}, null)).status, 401);
+  } finally {
+    for (const id of users) await db.delete(s.chatgptCredentialStore).where(eq(s.chatgptCredentialStore.userId, id));
+    if (previousMode === undefined) delete process.env.LOREFOLD_CHATGPT_STORAGE; else process.env.LOREFOLD_CHATGPT_STORAGE = previousMode;
+    if (previousKey === undefined) delete process.env.LOREFOLD_CHATGPT_ENCRYPTION_KEY; else process.env.LOREFOLD_CHATGPT_ENCRYPTION_KEY = previousKey;
+  }
 });
 
 test("AI settings default to Astra high and persist only for the authenticated account", async () => {

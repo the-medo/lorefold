@@ -1,23 +1,18 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
-import { chmod, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createRemoteJWKSet, customFetch, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { FilePlanAuthStore, profileName, type PlanAuthStore, type Profile, type Tokens } from "./store.js";
+export { profileName } from "./store.js";
+export type { Profile } from "./store.js";
 
 export const ISSUER = "https://auth.openai.com";
 export const RESOURCE = "https://api.openai.com/v1";
 export const PLAN_SCOPE = "chatgpt.tokens.use.direct";
 const SCOPES = `openid profile email offline_access resource.invoke ${PLAN_SCOPE}`;
-type Tokens = { access: string; refresh: string; id: string; expiresAt: number; scopes: string[] };
-export type Profile = { clientId: string; subject: string | null; email: string | null; tokens: Tokens | null };
-type State = { version: 1; hostId: string; profiles: Record<string, Profile> };
 type Discovery = { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string; revocation_endpoint: string };
 export const authDirectory = () => join(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"), "lorefold", "chatgpt-plan");
-export function profileName(name: string) {
-  if (!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(name) || ["constructor", "prototype"].includes(name)) throw new Error("Profile must be a short lowercase name (letters, digits, _ or -).");
-  return name;
-}
 export const profileFingerprint = (p: Profile) => createHash("sha256").update(`${p.clientId}\0${p.subject}`).digest("hex");
 export const hasPlan = (p?: Profile) => Boolean(p?.tokens?.scopes.includes(PLAN_SCOPE) && p.tokens.scopes.includes("resource.invoke"));
 const random = () => randomBytes(32).toString("base64url");
@@ -81,7 +76,8 @@ function tokens(data: Record<string, unknown>, old?: Tokens): Tokens {
 }
 
 export class PlanAuth {
-  constructor(readonly directory = authDirectory(), readonly send: typeof fetch = fetch) {}
+  constructor(readonly directory = authDirectory(), readonly send: typeof fetch = fetch,
+    private readonly store: PlanAuthStore = new FilePlanAuthStore(directory)) {}
   private async request(url: string, init: RequestInit = {}) {
     try { return await this.send(url, { ...init, redirect: "error", signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) }); }
     catch { throw new Error("OpenAI authentication connection failed. No credentials were logged."); }
@@ -93,49 +89,7 @@ export class PlanAuth {
     })) throw new Error("OpenAI discovery returned an unexpected issuer or endpoint.");
     return data as unknown as Discovery;
   }
-  async read(): Promise<State | null> {
-    const path = join(this.directory, "accounts.json");
-    try {
-      const info = await lstat(path);
-      if (!info.isFile() || (info.mode & 0o077) !== 0 || (process.getuid && info.uid !== process.getuid())) throw new Error();
-      const data = JSON.parse(await readFile(path, "utf8")) as State;
-      if (data.version !== 1 || !/^urn:uuid:[a-f0-9-]{36}$/.test(data.hostId) || !data.profiles || typeof data.profiles !== "object" || Array.isArray(data.profiles)) throw new Error();
-      for (const [name, p] of Object.entries(data.profiles)) {
-        profileName(name);
-        if (!p || typeof p.clientId !== "string" || p.clientId === "dynamic_agent_client" || (p.subject !== null && typeof p.subject !== "string") ||
-            (p.tokens && (typeof p.tokens.access !== "string" || typeof p.tokens.refresh !== "string" || typeof p.tokens.id !== "string" ||
-              !Number.isFinite(p.tokens.expiresAt) || !Array.isArray(p.tokens.scopes) || p.tokens.scopes.some(s => typeof s !== "string")))) throw new Error();
-      }
-      return data;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw new Error("ChatGPT credential store is invalid or not owner-only. Refusing to use it.");
-    }
-  }
-  private async save(state: State) {
-    const path = join(this.directory, `accounts.${randomUUID()}.tmp`);
-    const handle = await open(path, "wx", 0o600);
-    try { await handle.writeFile(JSON.stringify(state)); await handle.sync(); }
-    finally { await handle.close(); }
-    await rename(path, join(this.directory, "accounts.json"));
-  }
-  private async locked<T>(action: (state: State) => Promise<T>): Promise<T> {
-    await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const info = await lstat(this.directory);
-    if (!info.isDirectory() || (process.getuid && info.uid !== process.getuid())) throw new Error("ChatGPT credential directory must be owned by this user.");
-    await chmod(this.directory, 0o700);
-    const lockPath = join(this.directory, "session.lock");
-    let lock;
-    try { lock = await open(lockPath, "wx", 0o600); }
-    catch { throw new Error("ChatGPT session is busy. After a crash, confirm its PID has stopped before removing session.lock."); }
-    try {
-      await lock.writeFile(String(process.pid));
-      const saved = await this.read();
-      const state: State = saved ?? { version: 1, hostId: `urn:uuid:${randomUUID()}`, profiles: {} };
-      if (!saved) await this.save(state);
-      return await action(state);
-    } finally { await lock.close(); await rm(lockPath); }
-  }
+  async read() { return this.store.read(); }
   async status() {
     const state = await this.read();
     return Object.entries(state?.profiles ?? {}).map(([name, p]) => ({ profile: name, email: p.email,
@@ -143,7 +97,7 @@ export class PlanAuth {
   }
   async login(name: string, port: number, onReady: (url: string) => void, signal?: AbortSignal, canSave: () => Promise<boolean> = async () => true) {
     profileName(name);
-    return this.locked(async state => {
+    return this.store.locked(async (state, save) => {
       const discovery = await this.discovery(signal);
       const attempt = authorization(state.hostId, state.profiles[name], port);
       let accept!: (value: ReturnType<typeof callback>) => void, decline!: (error: Error) => void;
@@ -171,7 +125,7 @@ export class PlanAuth {
         const result = await received;
         // Keep the issued registration even if its first code expires during exchange.
         state.profiles[name] ??= { clientId: result.clientId, subject: null, email: null, tokens: null };
-        await this.save(state);
+        await save(state);
         const data = await jsonResponse(await this.request(discovery.token_endpoint, { method: "POST", signal, body: new URLSearchParams({
           grant_type: "authorization_code", client_id: result.clientId, code: result.code,
           code_verifier: attempt.verifier, redirect_uri: attempt.redirectUri, resource: RESOURCE,
@@ -181,7 +135,7 @@ export class PlanAuth {
           const identity = await verifyIdentity(next.id, result.clientId, attempt.nonce, attempt.existing?.subject ?? null, createRemoteJWKSet(new URL(discovery.jwks_uri), { [customFetch]: (url, init) => this.send(url, { ...init, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000) }) }));
           if (!await canSave() || signal?.aborted) throw new Error("ChatGPT sign-in cancelled or Lorefold session expired. Sign in again.");
           state.profiles[name] = { clientId: result.clientId, ...identity, tokens: next };
-          await this.save(state);
+          await save(state);
           return { profile: name, email: identity.email, planEnabled: hasPlan(state.profiles[name]) };
         } catch (error) {
           // A cancelled/invalid link must not leave the newly issued renewable
@@ -202,7 +156,7 @@ export class PlanAuth {
   }
   async access(name: string, expectedFingerprint?: string) {
     profileName(name);
-    return this.locked(async state => {
+    return this.store.locked(async (state, save) => {
       const p = state.profiles[name];
       if (!p?.subject || !p.tokens || !hasPlan(p)) throw new Error("Provider ChatGPT plan is not connected or not authorized. Run npm run chatgpt:plan -- login.");
       if (expectedFingerprint && profileFingerprint(p) !== expectedFingerprint) throw new Error("Provider ChatGPT account does not match this benchmark. Refusing to resume.");
@@ -214,13 +168,13 @@ export class PlanAuth {
             grant_type: "refresh_token", client_id: p.clientId, refresh_token: p.tokens.refresh, resource: RESOURCE,
           }) }));
         } catch (error) {
-          if (error instanceof AuthHTTPError && error.expiredRefresh) { p.tokens = null; await this.save(state); }
+          if (error instanceof AuthHTTPError && error.expiredRefresh) { p.tokens = null; await save(state); }
           throw error;
         }
         const next = tokens(data, p.tokens);
         if (typeof data.id_token === "string") await verifyIdentity(next.id, p.clientId, undefined, p.subject, createRemoteJWKSet(new URL(discovery.jwks_uri), { [customFetch]: this.send }));
         p.tokens = next;
-        await this.save(state);
+        await save(state);
         if (!hasPlan(p)) throw new Error("Provider ChatGPT plan permission was removed. Sign in again.");
       }
       return { token: p.tokens.access, fingerprint: profileFingerprint(p) };
@@ -228,7 +182,7 @@ export class PlanAuth {
   }
   async logout(name: string) {
     profileName(name);
-    return this.locked(async state => {
+    return this.store.locked(async (state, save) => {
       const p = state.profiles[name];
       if (!p?.tokens) return { revoked: true };
       let revoked = false;
@@ -239,7 +193,7 @@ export class PlanAuth {
         }) });
         revoked = response.status === 200; await response.body?.cancel();
       } catch { /* Still remove local credentials; report unconfirmed revocation. */ }
-      p.tokens = null; await this.save(state);
+      p.tokens = null; await save(state);
       return { revoked };
     });
   }

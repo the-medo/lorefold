@@ -85,6 +85,14 @@ export const userAiPreferences = pgTable("user_ai_preferences", {
   check("analysis_effort", sql`${t.effort} in ('medium', 'high', 'xhigh')`),
 ]);
 
+// Encrypted as a whole, including identity, client registration and tokens.
+// The encryption key is supplied separately to web and worker at runtime.
+export const chatgptCredentialStore = pgTable("chatgpt_credential_store", {
+  userId: text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  ciphertext: text().notNull(),
+  updatedAt: updatedAt(),
+});
+
 export const universes = pgTable("universes", {
   id: text().primaryKey(),
   ownerId: text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" }),
