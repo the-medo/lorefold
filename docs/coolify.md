@@ -208,16 +208,28 @@ and set `LOREFOLD_AI_MODE=gateway`, `LOREFOLD_IMPORT_LIVE=1`,
 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_GATEWAY_ID`, and `CLOUDFLARE_API_TOKEN`.
 The web app records provider mode on new jobs and the worker makes the calls, so
 configure both consistently. Existing mock jobs retain their original mode.
-Personal ChatGPT-plan connections remain disabled in production. See
+For your personal ChatGPT plan, follow the owner-only setup below. See
 [book imports](book-imports.md) for recovery and provider details.
 
 Website ChatGPT credentials can be persisted in PostgreSQL without a shared app
 volume: set `LOREFOLD_CHATGPT_STORAGE=database` and the same dedicated
 `LOREFOLD_CHATGPT_ENCRYPTION_KEY` (64 hexadecimal characters) as runtime-only
 variables on web and worker. Apply the packaged migrations first. Keep the key
-outside PostgreSQL and preserve it across deployments. This configures storage
-only; it does not yet enable the owner-only production OAuth/provisioning flow or
-switch imports from mock. See [encrypted connection storage](chatgpt-connections.md#encrypted-postgresql-storage).
+outside PostgreSQL and preserve it across deployments. To enable the personal
+server connection, also set these on both web and worker, then redeploy:
+
+```dotenv
+LOREFOLD_CHATGPT_PERSONAL=1
+LOREFOLD_OWNER_EMAIL=<your Lorefold sign-in email>
+```
+
+Keep `NODE_ENV=production` and set `APP_ORIGIN=https://lorefold.the-medo.com` on both.
+Only that owner can sign in or access the app; other accounts' data is retained.
+In **AI & connections**, click **Continue with ChatGPT** and use the local helper
+and one-time setup code shown there. No Coolify callback port needs exposing.
+See the [complete personal server flow](chatgpt-connections.md#personal-server-on-coolify).
+After connection succeeds, set `LOREFOLD_AI_MODE=chatgpt-plan` and
+`LOREFOLD_IMPORT_LIVE=1` on both apps and redeploy. Only new jobs switch from mock.
 
 ## 6. Final domain and operations
 

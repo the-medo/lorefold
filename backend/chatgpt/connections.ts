@@ -5,22 +5,30 @@ import type { ChatGPTConnection, ConnectionAttempt, ConnectionProgress } from ".
 import { PlanAuth } from "./auth.js";
 import { connectionStorage, DatabasePlanAuthStore } from "./database-store.js";
 import { pool } from "../db/client.js";
+import { ownerEmail } from "../personal-installation.js";
 
 type Client = Pick<PlanAuth, "login" | "status" | "logout">;
-type Configuration = { enabled: boolean; port: number; sshTarget: string | null };
+type Configuration = { enabled: boolean; port: number; sshTarget: string | null; transfer?: boolean };
 type Pending = {
   sessionId: string; controller: AbortController; done: Promise<void>;
   progress: ConnectionProgress; finished: boolean; expires: number;
 };
 export function personalConnectionConfiguration(env: NodeJS.ProcessEnv): Configuration {
-  connectionStorage(env);
-  const enabled = env.NODE_ENV !== "production" && env.LOREFOLD_CHATGPT_PERSONAL === "1";
+  const storage = connectionStorage(env);
+  const enabled = env.LOREFOLD_CHATGPT_PERSONAL === "1";
+  const transfer = enabled && env.NODE_ENV === "production";
+  if (transfer) {
+    if (!ownerEmail(env) || storage !== "database") throw new Error("Personal production ChatGPT requires LOREFOLD_OWNER_EMAIL and encrypted database storage.");
+    const origin = new URL(env.APP_ORIGIN ?? "");
+    if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash)
+      throw new Error("Personal production ChatGPT requires an HTTPS APP_ORIGIN.");
+  }
   const port = Number(env.LOREFOLD_CHATGPT_CALLBACK_PORT ?? 15190);
   const sshTarget = env.LOREFOLD_CHATGPT_SSH_TARGET || null;
   if (enabled && (!Number.isInteger(port) || port < 15184 || port > 15190 ||
     (sshTarget && !/^[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(sshTarget))))
     throw new Error("Invalid personal ChatGPT callback port or SSH target.");
-  return { enabled, port, sshTarget };
+  return { enabled, port, sshTarget, ...(transfer ? { transfer: true } : {}) };
 }
 
 // Account IDs only select an isolated store after the API authenticates a session.

@@ -103,6 +103,23 @@ test("Google provider discovery is public, uncached, and contains no credentials
   assert.deepEqual(await response.json(), { google: true });
 });
 
+test("an owner restriction rejects verified Google registration and linking for other emails", async t => {
+  const previous = process.env.LOREFOLD_OWNER_EMAIL;
+  process.env.LOREFOLD_OWNER_EMAIL = email;
+  try {
+    for (const rejectedEmail of [unverifiedEmail, otherEmail]) {
+      const flow = await begin();
+      const mock = googleResponse(t, flow, { email: rejectedEmail, email_verified: true, sub: `restricted-${rejectedEmail}` });
+      assertFailure(await finish(flow), "personal_installation");
+      mock.mock.restore();
+    }
+    assert.equal((await db.select().from(user).where(eq(user.email, unverifiedEmail))).length, 0);
+    assert.equal((await db.select().from(account).where(eq(account.userId, otherId))).filter(a => a.providerId === "google").length, 0);
+  } finally {
+    if (previous === undefined) delete process.env.LOREFOLD_OWNER_EMAIL; else process.env.LOREFOLD_OWNER_EMAIL = previous;
+  }
+});
+
 test("verified Google links an existing password account, preserves ownership, and keeps email login working", async (t) => {
   const flow = await begin();
   googleResponse(t, flow, { email: email.toUpperCase(), email_verified: true, sub: "synthetic-owner" });

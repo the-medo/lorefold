@@ -6,6 +6,8 @@ import { auth, signInProviders, trustedOrigins } from "./auth.js";
 import { getWorkspace, listBooks, saveProgress } from "./library.js";
 import { pool } from "./db/client.js";
 import { aiSettings, chatgptConnections, saveAnalysisPreference } from "./ai.js";
+import { VMChatGPTConnections } from "./chatgpt/vm-connections.js";
+import { ownerAllowed } from "./personal-installation.js";
 import { assignTheme, deleteTheme, saveTheme, themeLibrary } from "./themes.js";
 import { controlImport } from "./imports/jobs.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
@@ -17,9 +19,10 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 const smallBody = bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: "Request is too large." }, 413) });
+const transferBody = bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: "Request is too large." }, 413) });
 app.use("/api/*", (c, next) =>
   c.req.method === "POST" && /^\/api\/universes\/[^/]+\/resources$/.test(c.req.path)
-    ? next() : smallBody(c, next),
+    ? next() : c.req.path === "/api/connections/chatgpt/provision" ? transferBody(c, next) : smallBody(c, next),
 );
 app.get("/api/health", async (c) => {
   await pool.query("select 1");
@@ -27,9 +30,20 @@ app.get("/api/health", async (c) => {
 });
 app.get("/api/auth/providers", (c) => c.json(signInProviders));
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+// Local helper only. A short-lived, single-use capability is created by the
+// signed-in owner; each use also rechecks that exact browser session. It grants
+// no library access and never returns access/refresh/ID tokens.
+app.on(["GET", "POST"], "/api/connections/chatgpt/provision", async c => {
+  if (!(chatgptConnections instanceof VMChatGPTConnections)) throw new HTTPException(409, { message: "Personal server connection is not configured." });
+  if (c.req.header("origin") || c.req.header("cookie")) throw new HTTPException(403, { message: "Use the local connection helper." });
+  const code = /^Bearer ([a-zA-Z0-9_-]{43})$/.exec(c.req.header("authorization") ?? "")?.[1] ?? "";
+  return c.req.method === "GET" ? c.json(await chatgptConnections.registration(code))
+    : c.json(await chatgptConnections.receive(code, await jsonObject(c.req.raw)));
+});
 app.use("/api/*", async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: "Sign in to open your library." }, 401);
+  if (!ownerAllowed(session.user.email)) return c.json({ error: "This Lorefold installation is private to its owner." }, 403);
   if (
     !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
     !trustedOrigins.includes(c.req.header("origin") ?? "")

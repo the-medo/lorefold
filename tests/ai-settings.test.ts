@@ -161,9 +161,15 @@ test("cancel, session expiry, disconnect races and shutdown prevent late connect
     } finally { await service.close(); }
   }
 });
-test("personal ChatGPT must be explicitly configured and cannot be enabled in production", async () => {
+test("personal ChatGPT requires owner restriction, encryption and HTTPS in production", async () => {
   assert.equal(personalConnectionConfiguration({}).enabled, false);
-  assert.equal(personalConnectionConfiguration({ NODE_ENV: "production", LOREFOLD_CHATGPT_PERSONAL: "1" }).enabled, false);
+  assert.throws(() => personalConnectionConfiguration({ NODE_ENV: "production", LOREFOLD_CHATGPT_PERSONAL: "1" }), /requires/);
+  const production = { NODE_ENV: "production", LOREFOLD_CHATGPT_PERSONAL: "1", LOREFOLD_OWNER_EMAIL: "reader@example.test",
+    LOREFOLD_CHATGPT_STORAGE: "database", LOREFOLD_CHATGPT_ENCRYPTION_KEY: randomBytes(32).toString("hex"), APP_ORIGIN: "https://lorefold.example.test" };
+  assert.equal(personalConnectionConfiguration(production).transfer, true);
+  for (const change of [{ LOREFOLD_OWNER_EMAIL: "" }, { LOREFOLD_OWNER_EMAIL: "one@example.test,two@example.test" },
+    { LOREFOLD_CHATGPT_STORAGE: "file" }, { LOREFOLD_CHATGPT_ENCRYPTION_KEY: "" }, { APP_ORIGIN: "http://lorefold.example.test" }])
+    assert.throws(() => personalConnectionConfiguration({ ...production, ...change }));
   for (const config of [{ LOREFOLD_CHATGPT_CALLBACK_PORT: "15191" }, { LOREFOLD_CHATGPT_SSH_TARGET: "host; echo unsafe" }])
     assert.throws(() => personalConnectionConfiguration({ LOREFOLD_CHATGPT_PERSONAL: "1", ...config }), /Invalid/);
   const service = new PersonalChatGPTConnections({ enabled: false, port: 15190, sshTarget: null });

@@ -20,6 +20,6 @@ export type ChatGPTConnection = {
   registered: boolean;
   pending: boolean;
 };
-export type ConnectionAttempt = { authorizationUrl: string; expiresAt: string; tunnelCommand: string | null };
+export type ConnectionAttempt = { authorizationUrl: string; expiresAt: string; tunnelCommand: string | null; setupCode?: string; serverUrl?: string };
 export type ConnectionProgress = { state: "pending"; attempt: ConnectionAttempt } | { state: "complete" | "failed" | "none" };
 export type AISettings = { importMode?: import("./imports.js").ImportMode; preference: AnalysisPreference; chatgpt: ChatGPTConnection };

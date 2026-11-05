@@ -153,9 +153,13 @@ account-scoped advisory lock to coordinate web/worker token refreshes. Disconnec
 attempts revocation and clears stored tokens. Credentials never enter frontend
 state or PostgreSQL preferences; only ciphertext enters the credential table.
 
-This personal integration is disabled in production. It does not replace the
-chosen Cloudflare gateway/worker deployment: hosted ChatGPT subscription access
-needs separate OpenAI access. See [personal connection setup](chatgpt-connections.md).
+Production can explicitly enable a personal VM connection with an owner-email
+restriction, HTTPS and encrypted database storage. A local helper completes OAuth
+and transfers credentials using a short-lived, single-use setup code bound to the
+owner's browser session. The VM preserves its host ID and owns later refreshes.
+Other accounts' new sign-ins, existing app sessions and ChatGPT jobs are blocked
+when the owner restriction is set. This does not offer subscription access to
+other users of a hosted product. See [personal connection setup](chatgpt-connections.md).
 
 ## User themes
 

@@ -1,9 +1,10 @@
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { db } from "./db/client.js";
 import * as schema from "./db/schema.js";
 import { resolveTrustedOrigins } from "./origins.js";
 import { googleProvider } from "./google-auth.js";
+import { isInstallationOwner, ownerAllowed, ownerEmail } from "./personal-installation.js";
 
 const secret = process.env.BETTER_AUTH_SECRET;
 const baseURL = process.env.BETTER_AUTH_URL;
@@ -20,6 +21,7 @@ if (
 export const appOrigin = new URL(process.env.APP_ORIGIN ?? baseURL).origin;
 export const trustedOrigins = resolveTrustedOrigins(appOrigin);
 const google = googleProvider(process.env);
+ownerEmail(); // Reject an invalid restriction before serving authentication.
 export const signInProviders = { google: Boolean(google) };
 export const auth = betterAuth({
   appName: "Lorefold",
@@ -48,10 +50,18 @@ export const auth = betterAuth({
   },
   user: {
     validateUserInfo({ user, source }) {
+      if (!ownerAllowed(user.email ?? "")) return { error: "personal_installation", errorDescription: "This Lorefold installation is private to its owner." };
       if (source.method === "oauth" && source.oauth?.providerId === "google" && user.emailVerified !== true) {
         return { error: "google_email_unverified", errorDescription: "Use a Google account with a verified email address." };
       }
     },
+  },
+  databaseHooks: {
+    session: { create: { before: async session => {
+      if (ownerEmail() && !await isInstallationOwner(session.userId))
+        throw new APIError("FORBIDDEN", { code: "personal_installation", message: "This Lorefold installation is private to its owner." });
+      return { data: session };
+    } } },
   },
   onAPIError: { errorURL: `${appOrigin}/sign-in` },
   advanced: { cookiePrefix: process.env.AUTH_COOKIE_PREFIX },

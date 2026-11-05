@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createRemoteJWKSet, customFetch, jwtVerify, type JWTVerifyGetKey } from "jose";
-import { FilePlanAuthStore, profileName, type PlanAuthStore, type Profile, type Tokens } from "./store.js";
+import { FilePlanAuthStore, profileName, validateState, type PlanAuthStore, type Profile, type Tokens } from "./store.js";
 export { profileName } from "./store.js";
 export type { Profile } from "./store.js";
 
@@ -94,6 +94,32 @@ export class PlanAuth {
     const state = await this.read();
     return Object.entries(state?.profiles ?? {}).map(([name, p]) => ({ profile: name, email: p.email,
       connected: Boolean(p.tokens), planEnabled: hasPlan(p), expiresAt: p.tokens ? new Date(p.tokens.expiresAt).toISOString() : null }));
+  }
+  async prepareTransfer() {
+    return this.store.locked(async state => {
+      const existing = state.profiles.account;
+      if (existing?.tokens && hasPlan(existing)) throw new Error("Already connected. Disconnect before replacing the connection.");
+      return existing ? { clientId: existing.clientId, subject: existing.subject, email: existing.email, tokens: null } satisfies Profile : null;
+    });
+  }
+  async importTransfer(value: unknown, canSave: () => Promise<boolean>) {
+    return this.store.locked(async (state, save) => {
+      const existing = state.profiles.account;
+      if (existing?.tokens && hasPlan(existing)) throw new Error("Already connected. Disconnect before replacing the connection.");
+      const profile = validateState({ ...state, profiles: { account: value } }).profiles.account;
+      if (!/^[a-zA-Z0-9_-]{1,200}$/.test(profile.clientId) || !profile.subject || !hasPlan(profile) ||
+          !profile.tokens?.access || !profile.tokens.refresh || !profile.tokens.id ||
+          profile.tokens.expiresAt <= Date.now() + 30000 || profile.tokens.expiresAt > Date.now() + 86400000 ||
+          (existing && existing.clientId !== profile.clientId)) throw new Error("Invalid or expired transferred connection.");
+      const discovery = await this.discovery();
+      const identity = await verifyIdentity(profile.tokens.id, profile.clientId, undefined, existing?.subject ?? profile.subject,
+        createRemoteJWKSet(new URL(discovery.jwks_uri), { [customFetch]: (url, init) => this.request(String(url), init) }));
+      if (!await canSave()) throw new Error("Connection request expired or was cancelled.");
+      // The local helper has already checked nonce/PKCE. Validate its signed
+      // identity again, retain the VM's own host ID, and let only the VM refresh.
+      state.profiles.account = { ...profile, ...identity, tokens: { ...profile.tokens, expiresAt: Math.min(profile.tokens.expiresAt, Date.now() + 3600000) } };
+      await save(state);
+    });
   }
   async login(name: string, port: number, onReady: (url: string) => void, signal?: AbortSignal, canSave: () => Promise<boolean> = async () => true) {
     profileName(name);

@@ -80,6 +80,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
     if (code === "access_denied") return "Google sign-in was cancelled. Try again or use email.";
     if (code === "account_not_linked") return "This Google account could not be linked. Try signing in with your existing login method.";
     if (code === "google_email_unverified") return "Use a Google account with a verified email address, or sign in with email.";
+    if (code === "personal_installation") return "This Lorefold installation is private to its owner. Choose the owner's sign-in account.";
     return "Google sign-in could not be completed. Please try again or use email.";
   });
   const [busy, setBusy] = useState<"email" | "google" | null>(null);

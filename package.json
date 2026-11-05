@@ -19,6 +19,7 @@
     "demo:setup": "tsx scripts/demo-setup.ts",
     "benchmark:book": "tsx scripts/book-benchmark.ts",
     "chatgpt:plan": "tsx scripts/chatgpt-plan.ts",
+    "chatgpt:connect": "tsx scripts/chatgpt-connect.ts",
     "test:book-benchmark": "tsx --test tests/book-benchmark.test.ts tests/chatgpt-plan.test.ts && python3 -m unittest discover -s scripts/book-benchmark/tests -v",
     "user:create": "tsx scripts/create-user.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",

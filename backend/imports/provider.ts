@@ -4,6 +4,7 @@ import { liveProvider, reservation } from "../../scripts/book-benchmark/provider
 import type { AnalysisPreference } from "../../shared/ai.js";
 import type { ImportMode } from "../../shared/imports.js";
 import { importPrompt, mockImport, type ImportRequest } from "./analysis.js";
+import { isInstallationOwner } from "../personal-installation.js";
 export function importMode(env = process.env): ImportMode {
   const mode = env.LOREFOLD_AI_MODE ?? "mock";
   if (!["mock", "chatgpt-plan", "gateway"].includes(mode)) throw new Error("Unknown import provider.");
@@ -17,6 +18,7 @@ export async function importProvider(ownerId: string, mode: ImportMode, preferen
   let provider;
   if (mode === "chatgpt-plan") {
     if (!personalConnectionConfiguration(process.env).enabled) throw new Error("Personal ChatGPT connection is disabled.");
+    if (!await isInstallationOwner(ownerId)) throw new Error("Personal ChatGPT imports are restricted to the installation owner.");
     const auth = accountAuth(ownerId);
     const status = (await auth.status()).find(s => s.profile === "account" && s.connected && s.planEnabled);
     if (!status) throw new Error("Connect ChatGPT in your AI settings first.");

@@ -38,7 +38,7 @@ export function AISettingsPage() {
         if (progress.state === "complete") setMessage(result.chatgpt.planEnabled
           ? "ChatGPT connected. Your plan will be available for eligible book analyses."
           : "Your ChatGPT identity is connected, but plan use was not authorized. Continue with ChatGPT again to grant access.");
-        else setError("ChatGPT sign-in was cancelled, expired, or could not be verified. Check the tunnel and try again.");
+        else setError("ChatGPT sign-in was cancelled, expired, or could not be verified. Start a new connection and try again.");
       } catch (e) {
         if (active) { setError((e as Error).message); timer = setTimeout(poll, 5000); }
       }
@@ -94,15 +94,23 @@ export function AISettingsPage() {
         {connection?.email && <p>{connection.email}{!connection.connected && " · previously connected account"}</p>}
         <p className="muted">Eligible requests share your ChatGPT allowance. Plan limits and optional credit use are controlled in ChatGPT.</p>
         <a className="ai-external" href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">Manage ChatGPT usage <ExternalLink size={14} /></a>
-        {!connection?.enabled && <p className="ai-notice">Connecting is available in configured personal development installations. Hosted subscription access requires separate OpenAI setup.</p>}
+        {!connection?.enabled && <p className="ai-notice">ChatGPT connections are not enabled for this installation. Its owner must configure personal ChatGPT access.</p>}
         {attempt ? <div className="ai-connect-steps" aria-label="Connect ChatGPT">
           <h3>Finish connecting</h3>
+          {attempt.setupCode ? <>
+            <p>On your computer, open a terminal in an up-to-date Lorefold checkout with Node.js 24 or newer and dependencies installed. Run:</p>
+            <pre><code>{`npm run chatgpt:connect -- --server '${attempt.serverUrl}'`}</code></pre>
+            <p>When prompted, paste this one-time setup code:</p>
+            <pre><code>{attempt.setupCode}</code></pre>
+            <p className="muted">Keep this code private. The helper opens a local sign-in flow, then transfers your connection securely to this server. Your ChatGPT credentials stay out of the browser and chat.</p>
+          </> : <>
           {attempt.tunnelCommand ? <>
             <p>On the computer with your browser, open a terminal, run this command and leave it open. It lets ChatGPT return to this personal Lorefold installation.</p>
             <pre><code>{attempt.tunnelCommand}</code></pre>
             <p className="muted">If this tunnel is already running, keep using it. Then continue below.</p>
           </> : <p>Continue in a browser on this installation’s computer so the localhost callback can reach Lorefold.</p>}
           <a className="ai-chatgpt-button" href={attempt.authorizationUrl} target="_blank" rel="noreferrer">Continue with ChatGPT <ExternalLink size={15} /></a>
+          </>}
           <p className="muted">Return here after approving access. This page checks the result automatically. The connection request expires after 20 minutes.</p>
           <button className="secondary" disabled={busy} onClick={() => void action(async () => {
             const result = await api<{ revoked: boolean }>("/connections/chatgpt/attempt", { method: "DELETE" }); setAttempt(null);

@@ -230,7 +230,9 @@ and effort. The initial default is **Astra high**; Sol 6.1 and Astra each offer
 medium, high, and extra high. New imports snapshot these preferences; changing the default does not alter a running import.
 
 Personal development installations can enable a separate ChatGPT connection for
-each Lorefold account. See [connection setup](docs/chatgpt-connections.md).
+each Lorefold account. Personal production servers can enable an owner-only
+connection through a local OAuth helper and encrypted PostgreSQL storage.
+See [connection setup](docs/chatgpt-connections.md).
 The earlier command-line benchmark connection is independent of website accounts.
 
 ## Inspiration and status

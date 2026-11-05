@@ -78,3 +78,26 @@ test("connection UI guides the callback, reports completion, and supports discon
   await expect(page.getByRole("alert")).toContainText("could not be verified");
   await expect(page.getByRole("button", { name: "Continue with ChatGPT" })).toBeEnabled();
 });
+
+test("personal server setup shows the local helper and one-time code without storing it in the browser", async ({ page }) => {
+  const state: AISettings = { importMode: "mock", preference: { model: "gpt-6-astra", effort: "high" }, chatgpt: {
+    enabled: true, connected: false, planEnabled: false, email: null, registered: false, pending: false,
+  } };
+  const setupCode = "synthetic-personal-setup-code";
+  const attempt = { setupCode, serverUrl: "https://lorefold.example.test", authorizationUrl: "", tunnelCommand: null, expiresAt: new Date(Date.now() + 1200000).toISOString() };
+  let complete = false;
+  await page.route("**/api/settings/ai", route => route.fulfill({ json: state }));
+  await page.route("**/api/connections/chatgpt", route => route.fulfill({ json: attempt }));
+  await page.route("**/api/connections/chatgpt/attempt", route => route.fulfill({ json: complete ? { state: "complete" } : { state: "pending", attempt } }));
+  await page.goto("/settings/ai");
+  await page.getByRole("button", { name: "Continue with ChatGPT" }).click();
+  await expect(page.getByText(/npm run chatgpt:connect/)).toBeVisible();
+  await expect(page.getByText(setupCode, { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continue with ChatGPT" })).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.stringify({ ...localStorage, ...sessionStorage }))).not.toContain(setupCode);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  state.chatgpt = { ...state.chatgpt, connected: true, planEnabled: true, email: "reader@example.test", registered: true }; complete = true;
+  await expect(page.getByText("Connected · plan access enabled", { exact: true })).toBeVisible();
+  await expect(page.getByText(setupCode, { exact: true })).toHaveCount(0);
+});

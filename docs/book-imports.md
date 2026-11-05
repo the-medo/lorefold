@@ -35,7 +35,9 @@ LOREFOLD_CHATGPT_SSH_TARGET=reader@your-private-host
 Each reader must connect in **Settings → AI & connections**. No CLI or other user's
 credentials are adopted. Imports without a usable connection pause with a resume
 action. Plan limits, expiry, and request failures pause processing without switching
-to a paid API. Personal plan integration remains disabled in production.
+to a paid API. A personal production VM uses the
+[owner-only connection setup](chatgpt-connections.md#personal-server-on-coolify)
+with encrypted PostgreSQL storage instead of the development callback listener.
 
 Alternatively set `LOREFOLD_AI_MODE=gateway`, `LOREFOLD_IMPORT_LIVE=1`, and private
 `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_GATEWAY_ID`, `CLOUDFLARE_API_TOKEN` values.

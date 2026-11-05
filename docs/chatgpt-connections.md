@@ -20,11 +20,11 @@ Only anonymous aggregate metrics are included in the frontend snapshot
 ## Personal development setup
 
 OpenAI’s [open-source flow](https://developers.openai.com/siwc/token-sharing-open-source)
-supports local/personal installations and a loopback OAuth callback. Paid or
-remotely hosted products require separate access through OpenAI’s interest form.
+supports local/personal installations and a loopback OAuth callback. Offering
+subscription access to users of a hosted product requires separate OpenAI access.
 OpenAI also documents a [personal self-hosted VM flow](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms).
-This integration is disabled by default and cannot be enabled with
-`NODE_ENV=production`. It is not a hosted subscription integration.
+This integration is disabled by default. Production can explicitly enable the
+single-owner VM flow below; it does not offer subscription access to other users.
 
 Add these server-only settings to the worktree’s own `.env`:
 
@@ -82,6 +82,65 @@ revoke and clear that store before deleting the user. Database credential rows
 are deleted automatically with their Lorefold user; account deletion must still
 attempt remote revocation first.
 
+## Personal server on Coolify
+
+Configure **both web and worker** with these runtime-only variables, keeping
+`NODE_ENV=production` and your existing database encryption key:
+
+```dotenv
+LOREFOLD_CHATGPT_PERSONAL=1
+LOREFOLD_OWNER_EMAIL=your-lorefold-sign-in-email@example.com
+LOREFOLD_CHATGPT_STORAGE=database
+LOREFOLD_CHATGPT_ENCRYPTION_KEY=<your existing 64-character hexadecimal key>
+```
+
+Use the email of your Lorefold login, which need not match your ChatGPT email.
+`APP_ORIGIN` must be your HTTPS site origin. A production personal configuration
+without owner restriction, encryption, or HTTPS fails at startup. The owner
+restriction blocks other users' new Google/password sign-ins and existing
+sessions' access to the app. Their data is retained. Without this setting, normal
+verified Google registration remains available.
+
+After redeploying, open **User settings → AI & connections → Continue with
+ChatGPT**. Lorefold creates its stable VM host ID and shows a one-time setup code.
+On the computer with your browser, use an up-to-date Lorefold checkout with Node
+24+ and dependencies installed (`npm ci`); no local database or `.env` is needed:
+
+```bash
+npm run chatgpt:connect -- --server https://lorefold.the-medo.com
+```
+
+Paste the setup code when prompted, then open the printed OpenAI URL. The helper
+listens on `127.0.0.1:15190` only; `--port 15189` can select another free port in
+15184–15190. If the helper runs on another computer, forward the chosen loopback
+port over SSH from the browser computer before opening the URL. No callback
+port is exposed on the Coolify server and no public OpenAI redirect is required.
+
+The helper validates state, PKCE, nonce, signed identity and granted scopes
+locally, then sends the credentials directly to the exact HTTPS Lorefold origin.
+Redirects are refused. Its local opaque host ID is retained separately from CLI
+benchmark profiles; credentials exist only in memory. The server verifies the
+signed identity again, preserves its own VM host ID, and encrypts the connection
+in PostgreSQL. The server then owns refreshes. No credentials are sent through
+browser storage, chat, command arguments, or another account's CLI profile.
+
+Setup codes expire after 20 minutes, are single-use, and are bound to the owner's
+initiating browser session. Signing out, cancelling, expiry or restarting web
+invalidates setup. Only one web replica is supported for pending setup. Completed
+connections survive restarts. If transfer confirmation is lost, check Lorefold's
+status before starting again. The helper does not retain tokens or automatically
+retry an uncertain transfer; an unused authorization can be removed in ChatGPT.
+
+After connecting, enable real analysis on **both web and worker**:
+
+```dotenv
+LOREFOLD_AI_MODE=chatgpt-plan
+LOREFOLD_IMPORT_LIVE=1
+```
+
+Redeploy both and upload a new test book. New jobs use your ChatGPT allowance;
+existing mock jobs keep their original provider. Keep `IMPORT_CONCURRENCY=1`.
+
 ## Encrypted PostgreSQL storage
 
 For a web app and worker that share PostgreSQL but have separate container
@@ -115,10 +174,9 @@ operation reports that the connection is busy and can be tried again later.
 
 Apply migrations before enabling this mode. Existing file connections and CLI
 profiles are not copied automatically: reconnect the website account in a
-configured personal development installation. Selecting database storage does
-not enable OAuth or live imports by itself, and does not remove the production
-restriction. An owner-only production authorization/provisioning flow remains
-separate work. The database store itself needs no shared Docker volume.
+configured personal installation. Selecting database storage does not enable
+OAuth or live imports by itself. Production uses the personal server setup above.
+The database store itself needs no shared Docker volume.
 
 Tests use synthetic OAuth identities and isolated users. They verify ownership,
 session binding, cancellation, revocation failures and settings persistence without

@@ -3,13 +3,20 @@ import { and, eq, gt } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { analysisEfforts, analysisModels, defaultAnalysisPreference, type AnalysisPreference } from "../shared/ai.js";
 import { db } from "./db/client.js";
-import { session, userAiPreferences } from "./db/schema.js";
+import { session, user, userAiPreferences } from "./db/schema.js";
 import { PersonalChatGPTConnections, personalConnectionConfiguration } from "./chatgpt/connections.js";
+import { VMChatGPTConnections } from "./chatgpt/vm-connections.js";
+import { ownerAllowed } from "./personal-installation.js";
 
-export const chatgptConnections = new PersonalChatGPTConnections(personalConnectionConfiguration(process.env), undefined, async (userId, sessionId) => {
-  const [active] = await db.select({ id: session.id }).from(session).where(and(eq(session.id, sessionId), eq(session.userId, userId), gt(session.expiresAt, new Date())));
-  return Boolean(active);
-});
+const configuration = personalConnectionConfiguration(process.env);
+async function sessionIsActive(userId: string, sessionId: string) {
+  const [active] = await db.select({ email: user.email }).from(session).innerJoin(user, eq(session.userId, user.id))
+    .where(and(eq(session.id, sessionId), eq(session.userId, userId), gt(session.expiresAt, new Date())));
+  return Boolean(active && ownerAllowed(active.email));
+}
+export const chatgptConnections = configuration.transfer
+  ? new VMChatGPTConnections(new URL(process.env.APP_ORIGIN!).origin, sessionIsActive)
+  : new PersonalChatGPTConnections(configuration, undefined, sessionIsActive);
 export async function aiSettings(userId: string) {
   const [saved] = await db.select({ model: userAiPreferences.model, effort: userAiPreferences.effort }).from(userAiPreferences).where(eq(userAiPreferences.userId, userId));
   return { importMode: importMode(), preference: saved ?? defaultAnalysisPreference, chatgpt: await chatgptConnections.status(userId) };
