@@ -173,7 +173,7 @@ Create a second Git/Dockerfile application from the same branch and destination:
 | Docker Build Stage Target | `worker` |
 | Domains | Empty; remove any automatically generated domain |
 | Ports Mappings | Empty |
-| Healthcheck | Disabled (the worker has no HTTP server) |
+| Healthcheck | Keep the dashboard HTTP check disabled; the image supplies a database check |
 | Pre/post-deployment commands | Empty |
 
 If the UI requires **Ports Exposes**, its default `3000` can remain; no process
@@ -182,6 +182,20 @@ Set runtime `DATABASE_URL`, the storage/analysis variables from step 4, and
 `IMPORT_CONCURRENCY=1`. The worker does not need web auth secrets or Google keys.
 Apply its resource limits and deploy **after the web deployment has migrated the
 database**. Keep Auto Deploy off during setup.
+
+The worker image runs a read-only PostgreSQL connectivity check every 30 seconds,
+with bounded connection/query timeouts. It needs no domain, HTTP port, Google
+credentials, or auth secrets. This checks database access, not import completion
+or R2/provider access; verify an actual import below.
+
+Coolify beta.431 scans the entire multi-stage Dockerfile for a health check,
+including stages that were not built. A worker image without its own check can
+therefore fail with `map has no entry for key "Health"`, even when the dashboard
+check is disabled. Both targets now include their own checks with identical timing
+options (Coolify parses the first check). If you hit this error with an older
+commit, deploy the latest `main` with build target `worker`; changing the dashboard
+toggle alone does not fix it. `Custom healthcheck found` is expected with these
+images, followed by a healthy result when PostgreSQL is reachable.
 
 Upload a small synthetic TXT or EPUB through the website. Confirm that the worker
 finishes, original download works, progress can be saved, and chapter views follow
@@ -274,6 +288,7 @@ context by an allowlist and are never copied into the runtime image.
 - [Cloudflare Full (strict) TLS](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/full-strict/)
 - [Coolify Dockerfile builds](https://coolify.io/docs/applications/builds/dockerfile)
 - [Coolify health checks](https://coolify.io/docs/applications/configuration/health-checks)
+- [Health check detection in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/app/Models/Application.php#L1601-L1646)
 - [Coolify PostgreSQL](https://coolify.io/docs/databases/postgresql)
 - [Resource limits in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/resources/views/livewire/project/shared/resource-limits.blade.php)
 - [General settings in beta.431](https://github.com/coollabsio/coolify/blob/v4.0.0-beta.431/resources/views/livewire/project/application/general.blade.php)

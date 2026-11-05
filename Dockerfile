@@ -36,6 +36,10 @@ USER node
 
 # Select this target for the private background worker in Coolify.
 FROM runtime AS worker
+# Coolify beta.431 detects checks across all stages, so each target needs its own.
+# Keep timing options identical because that version parses only the first check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["node", "dist/server/backend/imports/healthcheck.js"]
 CMD ["node", "dist/server/backend/imports/index.js"]
 
 # The default target serves the frontend and API from one process.
