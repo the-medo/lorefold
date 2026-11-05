@@ -64,6 +64,27 @@ class EpubTests(unittest.TestCase):
         self.assertEqual(sections[0]["title"], "Chapter 1")
         self.assertTrue(sections[0]["fragmented"])
 
+    def test_import_splits_navigation_fragments_and_preserves_prefix(self):
+        for epub3 in (False, True):
+            fixture(self.path, epub3=epub3, fragment=True,
+                    body='<html><body><p>Foreword.</p><h1 id="start">Chapter 1</h1><p>Ada holds a key.</p><h1 id="second">Chapter 2</h1><p>Rowan returns.</p></body></html>',
+                    extra={"book/toc.ncx": '<ncx><navMap><navPoint><navLabel><text>One</text></navLabel><content src="chapter%201.xhtml#start"/></navPoint><navPoint><navLabel><text>Two</text></navLabel><content src="chapter%201.xhtml#second"/></navPoint></navMap></ncx>',
+                           "book/nav.xhtml": '<html xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><a href="chapter%201.xhtml#start">One</a><a href="chapter%201.xhtml#second">Two</a></nav></body></html>'})
+            sections = epub.extract(self.path, split_fragments=True)["sections"]
+            self.assertEqual(len(sections), 5)
+            self.assertEqual(sections[0]["paragraphs"][0]["text"], "Foreword.")
+            self.assertEqual(sections[1]["title"], "One")
+            self.assertEqual(sections[2]["title"], "Two")
+            self.assertNotIn("Rowan", str(sections[1]))
+            self.assertTrue(all(not s["fragmented"] for s in sections))
+
+    def test_import_rejects_missing_or_duplicate_anchors(self):
+        for body in ('<html><body><p>No anchor.</p></body></html>',
+                     '<html><body><p id="start">Ada.</p><p id="start">Rowan.</p></body></html>'):
+            fixture(self.path, epub3=True, fragment=True, body=body)
+            with self.assertRaises(ValueError):
+                epub.extract(self.path, split_fragments=True)
+
     def test_xml_entities_and_traversal_are_rejected(self):
         fixture(self.path, body='<!DOCTYPE html [<!ENTITY leak SYSTEM "file:///etc/passwd">]><html><body><p>&leak;</p></body></html>')
         with self.assertRaises(ValueError):

@@ -69,7 +69,7 @@ def paragraphs(root):
     return result
 
 
-def extract(path):
+def extract(path, split_fragments=False):
     if Path(path).stat().st_size > MAX_FILE:
         raise ValueError("EPUB exceeds 25 MB")
     with zipfile.ZipFile(path) as archive:
@@ -118,12 +118,14 @@ def extract(path):
             raise ValueError("Missing EPUB spine")
         labels = {}
         fragment_files = set()
+        navigation = {}
 
         def label(base, href, text):
             filename, fragment = target(base, href)
             if fragment:
                 fragment_files.add(filename)
             labels.setdefault(filename, normalize(text))
+            navigation.setdefault(filename, []).append((fragment, normalize(text)))
 
         # EPUB 3 navigation, falling back to EPUB 2 NCX.
         nav = next((n for n in manifest.values() if "nav" in n.get("properties", "").split()), None)
@@ -160,20 +162,66 @@ def extract(path):
             body = next((n for n in document.iter() if local(n.tag) == "body"), None)
             if body is None:
                 raise ValueError("XHTML document has no body")
+            if split_fragments and nav is not None and item is nav:
+                continue
             texts = paragraphs(body)
             if not texts:
                 continue
-            index = len(sections) + 1
-            title = labels.get(filename) or f"Section {index} (no navigation label)"
-            sections.append({"index": index, "title": title, "navigationTitle": labels.get(filename), "source": filename,
-                             "fragmented": filename in fragment_files,
-                             "paragraphs": [{"id": f"s{index}p{i + 1}", "text": t} for i, t in enumerate(texts)]})
+            groups = [(labels.get(filename), texts)]
+            if split_fragments and filename in fragment_files:
+                # Flush at referenced anchors without flattening their order or losing preface text.
+                wanted = {f for f, _ in navigation[filename] if f}
+                marked, buffer, positions = [], [], {}
+                def flush():
+                    text = normalize("".join(buffer))
+                    buffer.clear()
+                    if text:
+                        marked.append(text)
+                def walk(node):
+                    tag = local(node.tag)
+                    if tag in IGNORE:
+                        return
+                    ident = node.get("id") or node.get("{http://www.w3.org/XML/1998/namespace}id")
+                    if tag in BLOCKS or ident in wanted:
+                        flush()
+                    if ident in wanted:
+                        if ident in positions:
+                            raise ValueError("Duplicate chapter anchor")
+                        positions[ident] = len(marked)
+                    if tag == "br":
+                        buffer.append(" ")
+                    if node.text:
+                        buffer.append(node.text)
+                    for child in node:
+                        walk(child)
+                        if child.tail:
+                            buffer.append(child.tail)
+                    if tag in BLOCKS:
+                        flush()
+                walk(body)
+                flush()
+                if wanted - positions.keys():
+                    raise ValueError("Missing chapter navigation anchor")
+                cuts = {}
+                for fragment, title in navigation[filename]:
+                    cuts.setdefault(positions[fragment] if fragment else 0, title)
+                cuts.setdefault(0, None)
+                bounds = sorted(cuts)
+                groups = [(cuts[start], marked[start:bounds[i + 1] if i + 1 < len(bounds) else len(marked)])
+                          for i, start in enumerate(bounds)]
+            for label, group in groups:
+                if not group:
+                    continue
+                index = len(sections) + 1
+                sections.append({"index": index, "title": label or f"Section {index}", "navigationTitle": label, "source": filename,
+                                 "fragmented": False if split_fragments else filename in fragment_files,
+                                 "paragraphs": [{"id": f"s{index}p{i + 1}", "text": t} for i, t in enumerate(group)]})
         return {"sections": sections}
 
 
 if __name__ == "__main__":
     try:
-        print(json.dumps(extract(sys.argv[1]), ensure_ascii=False))
+        print(json.dumps(extract(sys.argv[1], "--chapters" in sys.argv[2:]), ensure_ascii=False))
     except (ValueError, OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, IndexError):
         # Do not echo private source text, filenames embedded in XML, or parser diagnostics.
         print("EPUB read failed: invalid, encrypted, oversized, or unsupported container/XML.", file=sys.stderr)

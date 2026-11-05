@@ -1,3 +1,4 @@
+import { ImportProgress, importing } from "./ImportProgress.js";
 import {
   StrictMode,
   Suspense,
@@ -224,6 +225,14 @@ function LibraryPage({ openBook }: { openBook: (id: string) => void }) {
       });
     return () => controller.abort();
   }, [attempt]);
+  useEffect(() => {
+    if (!books?.some(importing)) return;
+    const controller = new AbortController(); let active = true;
+    const timer = setInterval(async () => {
+      try { const response = await api<{ books: Book[] }>("/books", { signal: controller.signal }); if (active) setBooks(response.books); } catch { /* Retry next poll. */ }
+    }, 4000);
+    return () => { active = false; controller.abort(); clearInterval(timer); };
+  }, [books?.some(importing)]);
   const matching = books?.filter((b) =>
     `${b.title} ${b.author}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -333,6 +342,17 @@ function BookPage({
       });
     return () => controller.abort();
   }, [bookId, chapter, mode, revision]);
+  useEffect(() => {
+    if (!workspace || !importing(workspace.book)) return;
+    const controller = new AbortController(); let active = true;
+    const params = new URLSearchParams({ mode });
+    if (chapter !== undefined) params.set("chapter", String(chapter));
+    const timer = window.setInterval(async () => {
+      try { const next = await api<Workspace>(`/books/${encodeURIComponent(bookId)}/workspace?${params}`, { signal: controller.signal }); if (active) setWorkspace(next); }
+      catch { /* A manual refresh reports persistent errors. */ }
+    }, 4000);
+    return () => { active = false; controller.abort(); clearInterval(timer); };
+  }, [bookId, chapter, mode, workspace && importing(workspace.book)]);
   // Re-read the cutoff when returning from another tab; do not retain stale knowledge.
   useEffect(() => {
     const refresh = () => setRevision((r) => r + 1);
@@ -404,7 +424,8 @@ function BookPage({
       <button className="back-link" onClick={() => navigate(workspace.book.universeId ? `/universes/${encodeURIComponent(workspace.book.universeId)}` : "/library")}><ArrowLeft size={16} />{workspace.book.universeId ? "Back to universe" : "Your library"}</button>
       <div className="pending-book"><Cover book={workspace.book} /><div className="page-intro">
         <span className="eyebrow">{workspace.book.resourceId ? "UPLOADED BOOK" : "BOOK"}</span><h1>{workspace.book.title}</h1><p className="muted">{workspace.book.author}</p>
-        <h2>{workspace.book.resourceId ? "Your book is saved." : "No source file yet."}</h2><p>{workspace.book.resourceId ? "Chapter extraction and AI analysis are not available yet. Your original file is ready to download whenever you need it." : "This book is in your library, but no source file or chapters have been added yet."}</p>
+        <h2>{workspace.book.resourceId ? "Your book is saved." : "No source file yet."}</h2><p>{workspace.book.resourceId ? "Your original file is stored privately. Follow extraction and analysis below; you can leave this page while it runs." : "This book is in your library, but no source file or chapters have been added yet."}</p>
+        <ImportProgress book={workspace.book} refresh={() => setRevision(r => r + 1)} />
         {workspace.book.resourceId && <a className="primary download-link" href={`/api/resources/${workspace.book.resourceId}/download`}><Download size={17} />Download original</a>}
       </div></div>
     </main>
@@ -416,6 +437,8 @@ function BookPage({
         <button className="back-link" onClick={() => navigate("/library")}>
           <ArrowLeft size={16} /> Your library
         </button>
+        {workspace.book.universeId && <button className="back-link" onClick={() => navigate(`/universes/${encodeURIComponent(workspace.book.universeId!)}`)}>Back to universe</button>}
+        {workspace.book.resourceId && <a className="secondary download-link" href={`/api/resources/${workspace.book.resourceId}/download`}><Download size={16} />Download original</a>}
         <span className="crumb">
           <span>/</span>
           {workspace.book.title}
@@ -425,6 +448,7 @@ function BookPage({
           {workspace.cutoff}
         </span>
       </div>
+      <ImportProgress book={workspace.book} refresh={() => setRevision(r => r + 1)} />
       <div className="workspace-layout">
         <aside className="chapter-sidebar">
           <div className="mini-book">
@@ -572,6 +596,7 @@ function BookPage({
                     {workspace.chapter?.recap ??
                       "This chapter has not been analyzed yet."}
                   </p>
+                  {workspace.chapter?.recapEvidence?.map((claim, index) => <details key={index} className="recap-evidence"><summary>Sources for recap point {index + 1}</summary><p>{claim.text}</p>{claim.evidence.map((e, i) => <blockquote key={i}>Chapter {e.chapter}: {e.quote}</blockquote>)}</details>)}
                   {workspace.chapter && (
                     <>
                       <h3>What moved the story forward</h3>

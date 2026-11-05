@@ -32,7 +32,7 @@ test("account AI preference persists through reload on the private browser origi
   await expect(page.getByLabel("Analysis model")).toHaveValue("gpt-6-astra");
   await expect(page.getByLabel("Reasoning effort")).toHaveValue("high");
   await expect(page.getByText("Not connected", { exact: true })).toBeVisible();
-  await expect(page.getByText(/analysis from the app is not available yet/)).toBeVisible();
+  await expect(page.getByText(/Used for newly uploaded books/)).toBeVisible();
   await page.getByLabel("Analysis model").selectOption("gpt-6.1-sol");
   await page.getByLabel("Reasoning effort").selectOption("xhigh");
   await page.getByRole("button", { name: "Save default model" }).click();

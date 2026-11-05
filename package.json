@@ -10,7 +10,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:api": "tsx watch backend/index.ts",
     "dev:web": "vite --config frontend/vite.config.ts",
-    "build": "vite build --config frontend/vite.config.ts && tsc -p tsconfig.server.json",
+    "build": "vite build --config frontend/vite.config.ts && tsc -p tsconfig.server.json && mkdir -p dist/server/scripts/book-benchmark && cp scripts/book-benchmark/extract_epub.py dist/server/scripts/book-benchmark/",
     "start": "node dist/server/backend/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -23,9 +23,13 @@
     "user:create": "tsx scripts/create-user.ts",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:browser": "playwright test",
-    "test:dev": "tsx --test --test-concurrency=1 tests/lifecycle/*.test.ts"
+    "test:dev": "tsx --test --test-concurrency=1 tests/lifecycle/*.test.ts",
+    "dev:worker": "tsx watch backend/imports/index.ts",
+    "worker": "tsx backend/imports/index.ts",
+    "start:worker": "node dist/server/backend/imports/index.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1161.0",
     "@better-auth/drizzle-adapter": "1.7.12",
     "@fontsource-variable/crimson-pro": "5.3.0",
     "@fontsource-variable/dm-sans": "5.3.0",

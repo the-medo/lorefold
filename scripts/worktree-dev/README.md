@@ -90,8 +90,8 @@ on the Steam Machine it is installed under `/home/medo/dev/nodejs/bin`.
 | `prune --yes` | Remove the previewed stale resources after validating ownership again |
 
 `run -- npm run dev` remains a foreground debugging alternative; stop it with
-Ctrl-C before `up` or `down`. `npm run dev` supervises API and frontend children,
-terminates both when either exits, and refuses occupied ports. The background
+Ctrl-C before `up` or `down`. `npm run dev` supervises API, frontend, and import-worker children,
+terminates all three when any exits, and refuses occupied ports. The background
 service additionally stops every process in its systemd control group on `down`.
 `status` probes the local API; `up` also verifies the configured private URL.
 
@@ -192,12 +192,12 @@ The application honors:
 
 - Backend `HOST`/`PORT` and frontend `VITE_HOST`/`VITE_PORT` (strict ports).
 - Vite's `/api` proxy using `VITE_API_PROXY_TARGET`, keeping requests same-origin.
-- `DATABASE_URL` in Drizzle. The future worker must use it too.
+- `DATABASE_URL` in Drizzle. The import worker uses it too.
 - `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, and `AUTH_COOKIE_PREFIX`. Cookies are
   host-scoped rather than port-scoped, so the prefix must be configured in Better Auth.
 
-Future providers must honor development `R2_KEY_PREFIX` and
-`LOREFOLD_LOCAL_STORAGE_DIR`; the initial worker must honor `IMPORT_CONCURRENCY=1`.
+Providers honor development `R2_KEY_PREFIX` and
+`LOREFOLD_LOCAL_STORAGE_DIR`; the worker enforces `IMPORT_CONCURRENCY=1`.
 
 The generated auth origin comes from the worktree's saved access profile. For Google
 sign-in, register that worktree's exact Browser URL plus `/api/auth/callback/google`
@@ -217,8 +217,8 @@ cookie prefix, and database isolation remain controlled by the launcher. This
 option is rejected outside a development worktree. Do not edit generated env files.
 
 `LOREFOLD_STORAGE_MODE=local` enables private original file uploads in development.
-`LOREFOLD_AI_MODE=mock` remains a future provider contract. To exercise real services
-later, use reviewed development credentials, a private development R2 bucket,
+`LOREFOLD_AI_MODE=mock` runs deterministic imports with no AI calls. For real imports,
+see [book imports](../../docs/book-imports.md); use reviewed development credentials, a private development R2 bucket,
 and the worktree key prefix. Treat each live AI request as potentially billable.
 Never expose secrets through `VITE_*` variables or commit user ebooks.
 

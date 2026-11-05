@@ -23,9 +23,8 @@ Do not share SWUBASE application tables, credentials, or migration history.
 
 The web app, database, and import worker are the three runtime services we operate.
 The worker can use the same application image with a different entry point.
-Milestone 1 uses Node.js 24+, Hono, and TypeScript. The PostgreSQL queue library
-remains an implementation choice for milestone 2; verify it against Node before
-pinning the dependency.
+Milestone 1 uses Node.js 24+, Hono, and TypeScript. The queue uses PostgreSQL job/part rows, a session advisory lock, and fencing tokens;
+no extra queue service is required.
 
 There is no requirement for Next.js, Vercel hosting, D1, Redis, or Cloudflare Queues.
 Cloudflare R2 and AI Gateway remain explicit parts of the chosen architecture.
@@ -39,8 +38,10 @@ Cloudflare DNS/proxying can sit in front of Coolify independently of app hosting
    PostgreSQL. Keep job creation and database state changes transactional.
 3. The worker claims work, reads the ebook from R2, and saves ordered chapter text
    back to R2. Keep only object keys and source offsets in database references.
-4. Analyze chapters through AI Gateway, using only the current chapter and earlier
-   supported context. Validate structured output and its evidence references.
+4. Analyze each chapter part using current source text and earlier same-book identities.
+   Validate structured output and source quotes. In a separate pass, match those
+   immutable entities against other books in the owner's universe. This pass returns
+   links only and cannot rewrite notes using another book's future knowledge.
 5. Save recaps, entities, facts, relationships, evidence references, and processing
    checkpoints in PostgreSQL. Save reader progress separately from processing progress.
 6. The API builds filtered graph views from saved data. Moving between chapters
@@ -75,9 +76,9 @@ and per-book cost before selecting the extraction model.
 - Local development has a separate PostgreSQL container and volume per Git worktree.
   See [local development](../scripts/worktree-dev/README.md).
 - The application, Better Auth sign-in, and Drizzle schema/migrations are implemented.
-  Local sample data is seeded directly without a model. Original file uploads use
-  a development-only local storage adapter; R2/AI providers and the worker are not yet
-  implemented. Live calls will require explicit development configuration.
+  Local sample data is seeded directly without a model. Imports support local private
+  storage in development and explicitly configured private R2, with a separate
+  PostgreSQL-backed worker. Live AI calls require explicit configuration.
 
 ## Milestone 1 implementation
 
@@ -103,16 +104,16 @@ belong to one universe; the full library includes all owned books. Composite for
 keys prevent assigning a book or uploaded resource to another owner's universe.
 The sample migration creates Bellweather and preserves existing reading progress.
 
-Uploads accept EPUB/PDF/TXT/Markdown books and PDF/TXT/Markdown documents, bounded
-to 25 MB, with basic container signatures checked before storage. The development
-adapter saves originals under `.lorefold/storage/uploads/` with random keys and
-private file permissions. The API authorizes every download and serves files as
-attachments with no-store and nosniff headers. Files are never executed, extracted,
-or served from the frontend's static directory. Failed database writes remove the
-new file. Production upload storage remains disabled until private R2 is connected;
-crash recovery and orphan reconciliation belong with that durable import workflow.
-An uploaded book has zero chapters and no generated recaps or graph. Reference
-documents do not become library books or contribute knowledge automatically.
+Uploads accept EPUB/PDF/TXT/Markdown books and PDF/TXT/Markdown reference documents,
+bounded to 25 MB. Original downloads remain authenticated attachments. Book uploads
+transactionally enqueue a durable job; reference documents stay stored-only.
+The worker extracts the complete linear EPUB reading order (including fragment
+navigation), splits long chapters into bounded parts, and saves text to private
+storage. Chapter rows hold object keys. Validated part writes/checkpoints are atomic,
+and no chapter knowledge is published until all its parts finish. Saved responses
+can be resumed without another call; uncertain in-flight calls require explicit
+resume and may consume usage again. See [book import operations](book-imports.md)
+for limits, provider setup, recovery, and testing details.
 
 Books belong to a user. Every library, workspace, and progress query checks that
 ownership. Facts and relationships reference chapter-specific evidence with source
@@ -134,8 +135,8 @@ chapters, rewinds, ownership, and repeated migrations/seeds.
 
 `user_ai_preferences` stores a reader's model and reasoning effort, initially
 `gpt-6-astra` / `high`. User settings exposes the six evaluated Sol 6.1 and Astra
-combinations. This is a saved preference; uploaded books do not yet start an
-analysis job.
+combinations. A new import snapshots the saved model, effort, and installation provider.
+Readers see progress and recorded token usage on the book page.
 
 Personal development installations can explicitly enable the OpenAI ChatGPT plan
 OAuth flow. The account settings API binds sign-in attempts to a Lorefold user and
@@ -210,7 +211,10 @@ repeatable-read transaction. It reuses the book graph reader with a separate cut
 of `min(saved completed chapter, chapter count)` for each owned member book. It
 returns only the permitted story-so-far entities and relationships, with book IDs
 for provenance and namespaced entity, relationship, and evidence IDs to prevent
-collisions. Cross-book identity resolution is not inferred from matching names.
+collisions. Evidence-backed identity links are returned only after both endpoint
+chapters are visible. The UI combines those nodes after source exclusion; individual
+book knowledge remains unchanged. Cross-book identity is never inferred from names
+alone. The matching pass cannot mutate chapter extraction output.
 Unread books, pending uploads, and unanalyzed reference documents add no knowledge.
 
 The universe view reuses the Three.js renderer and evidence panel. Source checkboxes

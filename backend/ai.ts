@@ -1,3 +1,4 @@
+import { importMode } from "./imports/provider.js";
 import { and, eq, gt } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { analysisEfforts, analysisModels, defaultAnalysisPreference, type AnalysisPreference } from "../shared/ai.js";
@@ -11,7 +12,7 @@ export const chatgptConnections = new PersonalChatGPTConnections(personalConnect
 });
 export async function aiSettings(userId: string) {
   const [saved] = await db.select({ model: userAiPreferences.model, effort: userAiPreferences.effort }).from(userAiPreferences).where(eq(userAiPreferences.userId, userId));
-  return { preference: saved ?? defaultAnalysisPreference, chatgpt: await chatgptConnections.status(userId) };
+  return { importMode: importMode(), preference: saved ?? defaultAnalysisPreference, chatgpt: await chatgptConnections.status(userId) };
 }
 export async function saveAnalysisPreference(userId: string, input: Record<string, unknown>) {
   if (Object.keys(input).some(k => !["model", "effort"].includes(k)) ||

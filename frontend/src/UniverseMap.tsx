@@ -3,6 +3,7 @@ import { BookOpen, ChevronRight, FileText, Network, Search } from "lucide-react"
 import type { EntityKind, UniverseWorkspace } from "../../shared/contracts.js";
 import { EntityDetails } from "./EntityDetails.js";
 import { GraphBoundary } from "./GraphBoundary.js";
+import { combineUniverseGraph } from "../../shared/universe-graph.js";
 import { entityColors } from "./graph-theme.js";
 
 const StoryGraph = lazy(() => import("./Graph.js").then((module) => ({ default: module.StoryGraph })));
@@ -39,11 +40,7 @@ export function UniverseMap({ data }: { data: UniverseWorkspace }) {
     // These are view preferences only; progress and universe membership never change.
     try { localStorage.setItem(preferenceKey, JSON.stringify(next)); } catch { /* Storage may be disabled. */ }
   }
-  const includedGraph = useMemo(() => {
-    const entities = data.graph.entities.filter((entity) => !excluded.includes(`book:${entity.bookId}`));
-    const ids = new Set(entities.map((entity) => entity.id));
-    return { entities, relationships: data.graph.relationships.filter((edge) => ids.has(edge.source) && ids.has(edge.target)) };
-  }, [data.graph, excluded]);
+  const includedGraph = useMemo(() => combineUniverseGraph(data.graph, excluded), [data.graph, excluded]);
   const visible = useMemo(() => {
     const entities = includedGraph.entities.filter((entity) =>
       (kind === "all" || entity.kind === kind) &&
@@ -56,7 +53,7 @@ export function UniverseMap({ data }: { data: UniverseWorkspace }) {
   const titleFor = (bookId: string) => data.books.find((item) => item.id === bookId)?.title;
   const emptyMessage = !sources.length ? "Add books or sources to start exploring this universe."
     : !includedCount ? "No sources selected. Select a book or source to include it in the map."
-    : !includedGraph.entities.length ? "No knowledge to map yet. Finish chapters in a book to reveal its story. Uploaded sources will contribute after extraction and analysis are available."
+    : !includedGraph.entities.length ? "No knowledge to map yet. Finish chapters in a book to reveal its story. Uploaded books contribute as their chapters finish analysis."
     : "No matches. Try another search or entity type.";
 
   return <section className="universe-map" aria-label="Universe map">
@@ -88,10 +85,10 @@ export function UniverseMap({ data }: { data: UniverseWorkspace }) {
         <div className="graph-caption"><span>{visible.entities.length} entities · {visible.relationships.length} connections</span><span>Select a node to see its sources</span></div>
         <div className="entity-list" aria-label="Universe map entities">
           {visible.entities.map((item) => <button key={item.id} aria-pressed={item.id === entity?.id} className={item.id === entity?.id ? "active" : ""} onClick={() => setSelected(item.id)}>
-            <i style={{ background: entityColors[item.kind] }} /><span>{item.label}<small>{titleFor(item.bookId)}</small></span><ChevronRight size={13} />
+            <i style={{ background: entityColors[item.kind] }} /><span>{item.label}<small>{item.bookIds.map(titleFor).join(" · ")}</small></span><ChevronRight size={13} />
           </button>)}
         </div>
-        {entity && book && <EntityDetails entity={entity} graph={includedGraph} cutoff={Math.min(book.completedChapter, book.totalChapters)} sourceTitle={book.title} close={() => setSelected(null)} />}
+        {entity && book && <EntityDetails entity={entity} graph={includedGraph} cutoff={Math.min(book.completedChapter, book.totalChapters)} sourceTitle={entity.bookIds.map(titleFor).join(" · ")} boundaryText="Based on your reading progress in each selected book" close={() => setSelected(null)} />}
       </div>
     </div>
   </section>;

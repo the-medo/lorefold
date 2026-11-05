@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import type { db } from "./db/client.js";
 import * as s from "./db/schema.js";
 import type { Entity, Graph, GraphMode } from "../shared/contracts.js";
@@ -39,6 +39,7 @@ export async function readGraph(tx: KnowledgeReader, bookId: string, cutoff: num
     .where(
       and(
         eq(s.facts.bookId, bookId),
+        sql`exists (select 1 from chapters c where c.book_id = ${s.facts.bookId} and c.number = ${s.facts.revealChapter} and c.analyzed)`,
         lte(s.facts.revealChapter, cutoff),
         lte(s.evidence.chapter, cutoff),
       ),
@@ -106,6 +107,7 @@ export async function readGraph(tx: KnowledgeReader, bookId: string, cutoff: num
     .where(
       and(
         eq(s.relationships.bookId, bookId),
+        sql`exists (select 1 from chapters c where c.book_id = ${s.relationships.bookId} and c.number = ${s.relationships.revealChapter} and c.analyzed)`,
         lte(s.relationships.revealChapter, cutoff),
         lte(s.evidence.chapter, cutoff),
         mode === "chapter" ? eq(s.evidence.chapter, cutoff) : undefined,

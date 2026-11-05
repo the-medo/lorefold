@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, Download, FileText, Globe2, Library, Plus, Search, Upload, X } from "lucide-react";
+import type { AISettings } from "../../shared/ai.js";
 import type { Book, Universe, UniverseWorkspace } from "../../shared/contracts.js";
 import { api } from "./api.js";
 import { UniverseMap } from "./UniverseMap.js";
+import { importing } from "./ImportProgress.js";
 import { BookCard } from "./Books.js";
 import { ThemePicker } from "./theme.js";
 
@@ -89,6 +91,11 @@ function UploadResource({ universeId, close, saved }: { universeId: string; clos
   const [kind, setKind] = useState("book");
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [analysis, setAnalysis] = useState<AISettings | null>(null);
+  useEffect(() => { const controller = new AbortController();
+    api<AISettings>("/settings/ai", { signal: controller.signal }).then(setAnalysis).catch(() => {});
+    return () => controller.abort();
+  }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError("");
     if (!file || !file.size) { setError("Choose a nonempty file to upload."); return; }
@@ -111,7 +118,8 @@ function UploadResource({ universeId, close, saved }: { universeId: string; clos
       </label>
       <label>Title<input name="title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></label>
       {kind === "book" && <label>Author <span className="muted">(optional)</span><input name="author" maxLength={200} /></label>}
-      <p className="upload-explanation">Your original file will be saved privately. Chapter extraction and AI analysis are not available yet.</p>
+      {kind === "book" && analysis && <p className="upload-explanation">{analysis.importMode === "mock" ? "Mock mode: creates source excerpts to test the workflow, without AI calls or charges." : `${analysis.preference.model === "gpt-6-astra" ? "Astra" : "Sol 6.1"} · ${analysis.preference.effort === "xhigh" ? "Extra high" : analysis.preference.effort}. Uploading starts analysis and uses ${analysis.importMode === "gateway" ? "gateway credits" : "your connected ChatGPT plan allowance"}. You can pause it from the book page.`}</p>}
+      <p className="upload-explanation">Books are analyzed chapter by chapter using your saved model and this installation’s provider. Related characters can be matched to existing books in this universe. Reference documents are stored only.</p>
       <ErrorNote error={error} />
       <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={close}>Cancel</button><button className="primary" disabled={busy}>{busy ? "Uploading…" : "Upload resource"}<Upload size={16} /></button></div>
     </form>
@@ -158,6 +166,17 @@ export function UniversePage({ id, navigate }: { id: string; navigate: (path: st
       .catch((e) => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [id, revision]);
+  useEffect(() => {
+    if (!data?.books.some(importing)) return;
+    const controller = new AbortController();
+    let active = true;
+    const refresh = async () => {
+      try { const next = await api<UniverseWorkspace>(`/universes/${encodeURIComponent(id)}`, { signal: controller.signal }); if (active) setData(next); }
+      catch { /* Preserve current view; the regular refresh exposes connection errors. */ }
+    };
+    const timer = window.setInterval(refresh, 4000);
+    return () => { active = false; controller.abort(); clearInterval(timer); };
+  }, [id, data?.books.some(importing)]);
   const saved = () => { setNotice(modal === "upload" ? "Resource uploaded. Your original file is saved." : "Book added to this universe."); setModal(null); setRevision((n) => n + 1); };
   const documents = data?.resources.filter((r) => r.kind === "document") ?? [];
   return <main className="library-page universe-page">

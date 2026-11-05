@@ -98,5 +98,5 @@ test("rewinds remove later names, aliases, facts, evidence, and relationships in
   assert.ok(graph.entities.some((node) => node.label === "The gardener"));
   await progress(bookId, 0);
   await progress(secondBookId, 0);
-  assert.deepEqual((await workspace()).graph, { entities: [], relationships: [] });
+  assert.deepEqual((await workspace()).graph, { entities: [], relationships: [], matches: [] });
 });

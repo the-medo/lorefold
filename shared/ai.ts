@@ -22,4 +22,4 @@ export type ChatGPTConnection = {
 };
 export type ConnectionAttempt = { authorizationUrl: string; expiresAt: string; tunnelCommand: string | null };
 export type ConnectionProgress = { state: "pending"; attempt: ConnectionAttempt } | { state: "complete" | "failed" | "none" };
-export type AISettings = { preference: AnalysisPreference; chatgpt: ChatGPTConnection };
+export type AISettings = { importMode?: import("./imports.js").ImportMode; preference: AnalysisPreference; chatgpt: ChatGPTConnection };

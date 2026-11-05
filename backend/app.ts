@@ -7,6 +7,7 @@ import { getWorkspace, listBooks, saveProgress } from "./library.js";
 import { pool } from "./db/client.js";
 import { aiSettings, chatgptConnections, saveAnalysisPreference } from "./ai.js";
 import { assignTheme, deleteTheme, saveTheme, themeLibrary } from "./themes.js";
+import { controlImport } from "./imports/jobs.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
 
 export const app = new Hono<{ Variables: { userId: string; sessionId: string } }>();
@@ -103,6 +104,13 @@ app.get("/api/resources/:id/download", async (c) => {
     "Content-Length": String(bytes.length), "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox",
   } });
+});
+app.post("/api/books/:id/import", async c => {
+  const body = await jsonObject(c.req.raw);
+  if (Object.keys(body).length !== 1 || !["pause", "resume"].includes(body.action as string))
+    throw new HTTPException(400, { message: "Choose pause or resume." });
+  await controlImport(c.get("userId"), c.req.param("id"), body.action as "pause" | "resume");
+  return c.json({ saved: true });
 });
 app.get("/api/books/:id/workspace", async (c) => {
   const rawChapter = c.req.query("chapter");

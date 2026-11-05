@@ -149,8 +149,10 @@ Create more universes to organize your own sources. Inside a universe, upload a
 book (EPUB, PDF, TXT, or Markdown) or reference document (PDF, TXT, or Markdown), up
 to 25 MB. Original files are private and downloadable. **My Library** still lists
 all your books; unassigned books can be added to a universe without changing progress.
-Uploads are stored locally in this development worktree. Chapter extraction and
-AI analysis are not available yet, so uploaded books show an explicit pending state.
+Books queue background extraction and chapter analysis automatically. The book page
+shows progress, recorded token usage, and pause/resume controls. Development defaults
+to clearly labelled mock analysis; configure a connected ChatGPT plan or AI Gateway
+for real model calls. See [book imports](docs/book-imports.md).
 
 Each universe also has a **Universe map**, using the same interactive 3D map as
 the book view. It combines story-so-far knowledge through each book's own saved
@@ -158,12 +160,14 @@ finished chapter. Use **Included sources** to select or deselect books and refer
 documents; choices are remembered in this browser without changing reading progress
 or universe membership. Search, entity types, and evidence remain available, with
 the originating book shown in the entity list and evidence panel. Unread books and
-pending uploads contribute no knowledge. Reference documents remain pending until
-analysis is implemented. Entities stay separate per book; matching names alone do
-not establish a shared identity across stories.
+unfinished chapters contribute no knowledge. Reference documents remain stored-only.
+A separate identity pass links supported shared characters across books in the same
+universe. Both endpoints must be within their respective reading cutoffs. Excluded
+sources contribute neither facts nor identity bridges; matching names alone do not
+establish a shared identity.
 
 The sample content is original synthetic fiction seeded transactionally in PostgreSQL.
-No R2, chapter extraction, model, or external AI calls are used. Processing progress is
+The sample requires no external services. Processing progress is
 displayed separately from reading progress. The API owns the spoiler boundary;
 changing a browser URL cannot fetch knowledge beyond saved progress.
 
@@ -221,8 +225,7 @@ migration after a schema change. Apply it through the worktree launcher as above
 
 User settings → **AI & connections** saves each reader’s default analysis model
 and effort. The initial default is **Astra high**; Sol 6.1 and Astra each offer
-medium, high, and extra high. These are preferences for the future import worker;
-uploads still store files without running analysis.
+medium, high, and extra high. New imports snapshot these preferences; changing the default does not alter a running import.
 
 Personal development installations can enable a separate ChatGPT connection for
 each Lorefold account. See [connection setup](docs/chatgpt-connections.md).
@@ -235,4 +238,5 @@ Inspired by the mindmap-style exploration in [AI Coding Dictionary](https://www.
 **Status:** Milestone 1 implemented: React/Hono application, private Better Auth
 sign-in, Drizzle migrations, a user-owned library, saved progress, chapter recaps,
 and an interactive Three.js 3D graph with evidence. EPUB import, background jobs,
-R2, AI extraction, and hosted deployment remain later milestones.
+The private R2 adapter and background chapter analysis are implemented with explicit
+configuration. Hosted deployment remains a later milestone.

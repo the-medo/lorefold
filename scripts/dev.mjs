@@ -38,7 +38,7 @@ try {
     ),
   );
 }
-const children = ["dev:api", "dev:web"].map((script) =>
+const children = ["dev:api", "dev:web", "dev:worker"].map((script) =>
   spawn("npm", ["run", script], {
     stdio: "inherit",
     env: process.env,

@@ -18,9 +18,12 @@ Drizzle migrations, and a deterministic three-chapter sample with recaps, saved
 progress, and a Three.js 3D map. Universes are the first page; My Library
 remains the complete book list. Private universes group books and uploaded reference
 documents. Development uploads save original files locally (25 MB maximum) and
-allow authorized downloads. EPUB extraction, workers, R2/AI providers, and production
-deployment are not implemented. Never display an upload as analyzed or readable
-chapters until extraction actually exists.
+allow authorized downloads. EPUB/text/PDF extraction, durable import jobs, and a separate worker are implemented.
+Imports default to clearly labelled mock analysis; live ChatGPT-plan or gateway calls
+and private R2 require explicit configuration. Production deployment is not implemented.
+Only fully validated chapters may contribute readable recaps or graph knowledge.
+Cross-book identity matching is a separate pass that may return links only, never
+rewrite notes using another book's information. See docs/book-imports.md.
 
 Verified Google sign-in automatically creates a new account with an empty private
 library; it must not require an invitation or manual provisioning. Existing users
@@ -137,7 +140,7 @@ Validate universe/book ownership on every read, assignment, upload, and download
 Books have at most one universe; My Library includes assigned and unassigned books.
 Reference documents stay out of the book list. Keep universe membership separate
 from chapter knowledge: grouping sources must not expose cross-book spoilers.
-Future analysis providers should default to deterministic mock AI.
+Analysis providers default to deterministic mock AI.
 Live AI/R2 activity requires explicit development configuration. Never put secrets
 in frontend `VITE_*` values.
 

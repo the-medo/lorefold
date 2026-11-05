@@ -160,6 +160,8 @@ export const chapters = pgTable(
     number: integer().notNull(),
     title: text().notNull(),
     text: text().notNull(),
+    textKey: text("text_key"),
+    recapEvidence: jsonb("recap_evidence").$type<{ text: string; evidence: { chapter: number; quote: string }[] }[]>().notNull().default([]),
     recap: text().notNull(),
     developments: jsonb().$type<string[]>().notNull(),
     analyzed: boolean().notNull().default(false),
@@ -298,3 +300,50 @@ export const relationships = pgTable(
     }).onDelete("cascade"),
   ],
 );
+
+// Each upload gets one durable job. Chapters and their graph writes commit together.
+export const importJobs = pgTable("import_jobs", {
+  bookId: text("book_id").primaryKey().references(() => books.id, { onDelete: "cascade" }),
+  resourceId: text("resource_id").notNull().references(() => resources.id, { onDelete: "cascade" }),
+  mode: text().$type<import("../../shared/imports.js").ImportMode>().notNull(),
+  model: text().notNull(), effort: text().notNull(),
+  status: text().$type<import("../../shared/imports.js").ImportStatus>().notNull().default("queued"),
+  runToken: text("run_token"),
+  pauseRequested: boolean("pause_requested").notNull().default(false),
+  totalParts: integer("total_parts").notNull().default(0),
+  completedParts: integer("completed_parts").notNull().default(0),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  error: text(), retryable: boolean().notNull().default(true),
+  createdAt: createdAt(), updatedAt: updatedAt(),
+}, t => [check("import_status", sql`${t.status} in ('queued','extracting','analyzing','paused','failed','complete')`),
+  check("import_mode", sql`${t.mode} in ('mock','chatgpt-plan','gateway')`)]);
+
+export const importParts = pgTable("import_parts", {
+  bookId: text("book_id").notNull().references(() => importJobs.bookId, { onDelete: "cascade" }),
+  chapter: integer().notNull(), part: integer().notNull(),
+  phase: text().$type<"analysis" | "identity">().notNull().default("analysis"),
+  sourceKey: text("source_key").notNull(),
+  status: text().$type<"pending" | "running" | "received" | "complete" | "failed">().notNull().default("pending"),
+  attempts: integer().notNull().default(0),
+  // Immutable prompt/candidate snapshot makes stored responses reproducible after restart.
+  request: jsonb().$type<import("../imports/analysis.js").ImportRequest>(),
+  response: jsonb().$type<import("../../scripts/book-benchmark/provider.js").ProviderResult>(),
+  error: text(),
+}, t => [primaryKey({ columns: [t.bookId, t.chapter, t.part] }),
+  foreignKey({ columns: [t.bookId, t.chapter], foreignColumns: [chapters.bookId, chapters.number] }).onDelete("cascade")]);
+
+// No global name or description: a cross-book identity is visible only when both
+// endpoint facts/evidence are visible. Each book retains its own knowledge.
+export const entityMatches = pgTable("entity_matches", {
+  id: text().primaryKey(),
+  bookId: text("book_id").notNull(), entityId: text("entity_id").notNull(),
+  chapter: integer().notNull(), evidenceId: text("evidence_id").notNull(),
+  otherBookId: text("other_book_id").notNull(), otherEntityId: text("other_entity_id").notNull(),
+  otherChapter: integer("other_chapter").notNull(), otherEvidenceId: text("other_evidence_id").notNull(),
+}, t => [
+  foreignKey({ columns: [t.bookId, t.entityId], foreignColumns: [entities.bookId, entities.id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.otherBookId, t.otherEntityId], foreignColumns: [entities.bookId, entities.id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.bookId, t.evidenceId], foreignColumns: [evidence.bookId, evidence.id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.otherBookId, t.otherEvidenceId], foreignColumns: [evidence.bookId, evidence.id] }).onDelete("cascade"),
+]);
