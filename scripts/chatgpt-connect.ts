@@ -1,4 +1,4 @@
-import { createInterface } from "node:readline/promises";
+import { createInterface } from "node:readline";
 import { stdin, stdout } from "node:process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -19,11 +19,20 @@ async function main() {
     throw new Error("Pass --server with your Lorefold HTTPS origin.");
   const port = Number(option("--port") ?? 15190);
   if (!Number.isInteger(port) || port < 15184 || port > 15190) throw new Error("Choose a free callback port in 15184–15190.");
-  if (!stdin.isTTY) throw new Error("Run this helper in an interactive terminal.");
-  const terminal = createInterface({ input: stdin, output: stdout });
+  // Git Bash/MinTTY can expose native Windows stdin as a pipe. readline can
+  // still read the setup code; isTTY is not a reliable interactivity test.
+  const terminal = createInterface({ input: stdin, output: stdout, terminal: Boolean(stdin.isTTY && stdout.isTTY) });
   console.log(`Connecting only to ${origin.origin}. The setup code expires after 20 minutes.`);
-  const code = (await terminal.question("Paste the setup code shown in Lorefold: ")).trim();
-  terminal.close();
+  let code: string;
+  try {
+    code = (await new Promise<string>((resolve, reject) => {
+      terminal.once("line", resolve);
+      const cancelled = () => reject(new Error("No setup code was entered. Run the helper again and paste the code when prompted."));
+      terminal.once("close", cancelled); terminal.once("SIGINT", cancelled);
+      terminal.setPrompt("Paste the setup code shown in Lorefold: "); terminal.prompt();
+    })).trim();
+  }
+  finally { terminal.close(); }
   if (!/^[a-zA-Z0-9_-]{43}$/.test(code)) throw new Error("Invalid setup code. Start again in Lorefold.");
   const endpoint = new URL("/api/connections/chatgpt/provision", origin);
   async function request(profile?: Profile): Promise<Response> {
