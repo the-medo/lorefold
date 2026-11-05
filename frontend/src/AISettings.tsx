@@ -61,6 +61,7 @@ export function AISettingsPage() {
       <section className="settings-account" aria-labelledby="analysis-heading">
         <span className="eyebrow">BOOK ANALYSIS</span>
         <h2 id="analysis-heading">Choose your default model</h2>
+        <p className="ai-footnote">{settings.importMode === "mock" ? "This installation uses mock analysis: source excerpts only, with no AI calls or charges." : settings.importMode === "gateway" ? "This installation uses AI Gateway. New uploads consume the configured gateway credits." : "This installation uses your connected ChatGPT plan. New uploads consume your shared plan allowance."}</p>
         <p className="muted">Astra high is the starting default. Choose the model and reasoning effort you prefer.</p>
         <div className="ai-analysis-layout">
           <div className="ai-analysis-choice">
@@ -80,7 +81,7 @@ export function AISettingsPage() {
               <p className="muted">Compare time and token use before choosing. Higher effort did not consistently improve results in this sample.</p>
               <button className="primary" type="submit" disabled={busy || !changed}>Save default model</button>
             </form>
-            <p className="ai-footnote">Saved for future analyses. Uploaded books are currently stored only; analysis from the app is not available yet.</p>
+            <p className="ai-footnote">Used for newly uploaded books. Each import keeps its starting model and effort. Analysis progress and recorded usage appear on the book page.</p>
           </div>
           <AnalysisComparison preference={preference} />
         </div>

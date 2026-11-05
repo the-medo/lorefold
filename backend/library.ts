@@ -7,9 +7,16 @@ import type {
   Workspace,
 } from "../shared/contracts.js";
 
+import { storage } from "./imports/storage.js";
+import type { ImportProgress } from "../shared/imports.js";
 import { readGraph, type KnowledgeReader } from "./knowledge.js";
 
 const bookSelection = {
+  import: sql<ImportProgress | null>`(select json_build_object(
+    'status', j.status, 'mode', j.mode, 'model', j.model, 'effort', j.effort,
+    'totalParts', j.total_parts, 'completedParts', j.completed_parts,
+    'inputTokens', j.input_tokens, 'outputTokens', j.output_tokens, 'error', j.error, 'retryable', j.retryable
+  ) from import_jobs j where j.book_id = ${s.books.id})`,
   id: s.books.id,
   title: s.books.title,
   author: s.books.author,
@@ -81,6 +88,8 @@ export async function getWorkspace(
                 number: s.chapters.number,
                 title: s.chapters.title,
                 text: s.chapters.text,
+                textKey: s.chapters.textKey,
+                recapEvidence: s.chapters.recapEvidence,
                 recap: s.chapters.recap,
                 developments: s.chapters.developments,
               })
@@ -92,12 +101,14 @@ export async function getWorkspace(
                   eq(s.chapters.analyzed, true),
                 ),
               );
+      let sourceText = chapter?.text ?? "";
+      if (chapter?.textKey) sourceText = (await storage().get(chapter.textKey)).toString("utf8");
       return {
         book,
         cutoff,
         mode,
         chapters: chapterList,
-        chapter: chapter ?? null,
+        chapter: chapter ? { number: chapter.number, title: chapter.title, text: sourceText, recap: chapter.recap, developments: chapter.developments, recapEvidence: chapter.recapEvidence } : null,
         graph: await readGraph(tx, bookId, cutoff, mode),
       };
     },

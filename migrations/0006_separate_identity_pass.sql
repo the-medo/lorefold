@@ -1,0 +1,1 @@
+ALTER TABLE "import_parts" ADD COLUMN "phase" text DEFAULT 'analysis' NOT NULL;

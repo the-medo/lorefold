@@ -1891,3 +1891,12 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
 .app-header { min-height: 83px; height: auto; }
 .app-header nav { min-height: 83px; }
 @media (max-width: 700px) { .app-header nav { min-height: 43px; } }
+
+.import-progress { display: grid; gap: .65rem; padding: 1.25rem; margin: 1rem 0; border: 1px solid var(--border); border-radius: var(--radius, 12px); background: var(--surface); font-size: .9rem; }
+.import-progress progress { width: 100%; }
+.import-progress .import-provider, .import-progress small { color: var(--muted); font-size: .8rem; }
+.import-progress p { margin: 0; }
+.import-progress button { justify-self: start; }
+.import-progress.compact { padding: .75rem; font-size: .8rem; }
+.recap-evidence { margin: .75rem 0; }
+.recap-evidence blockquote { margin: .75rem 0; padding-left: 1rem; border-left: 2px solid var(--border); }

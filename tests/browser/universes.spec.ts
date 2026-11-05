@@ -73,7 +73,7 @@ test("universes are the first page; create, upload, download, and retain books i
   await expect(page.getByRole("heading", { name: "The Moonlit Path", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Orchard field notes" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open The Moonlit Path", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Your book is saved." })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Book analysis" })).toContainText("Analysis complete", { timeout: 15000 });
   await expect(page.getByRole("link", { name: "Download original" })).toBeVisible();
   await page.getByRole("button", { name: "Back to universe" }).click();
   await expect(page).toHaveURL(universeURL);

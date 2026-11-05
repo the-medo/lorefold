@@ -61,7 +61,7 @@ export function AnalysisComparison({ preference }: { preference: AnalysisPrefere
     <div id="comparison-notes" className="ai-comparison-notes">
       <p>Each configuration also used the same <strong>{numbers.format(benchmark.inputTokens)} input tokens</strong>. Reasoning tokens are already included in the output total.</p>
       <p>Checks count chapter results that passed formatting and exact-quote validation; they do not measure overall accuracy. One run per configuration and chapter; times and results can vary.</p>
-      <p>Plan allowance, monetary cost and full-book usage were not measured.</p>
+      <p>Plan allowance, monetary cost and full-book usage were not measured. Cross-book identity matching adds a separate request when candidates exist; it is not included in this benchmark.</p>
     </div>
   </section>;
 }

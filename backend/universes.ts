@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, unlink } from "node:fs/promises";
-import { join, extname } from "node:path";
+import { extname } from "node:path";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { db } from "./db/client.js";
 import * as s from "./db/schema.js";
+import { storage } from "./imports/storage.js";
+import { enqueueImport } from "./imports/jobs.js";
 import { listBooks } from "./library.js";
 import { readGraph, type KnowledgeReader } from "./knowledge.js";
 import type { Universe, Resource, UniverseWorkspace } from "../shared/contracts.js";
@@ -60,14 +61,20 @@ export async function universeWorkspace(ownerId: string, id: string): Promise<Un
       const scopedId = (localId: string) => JSON.stringify([book.id, localId]);
       graph.entities.push(...source.entities.map((entity) => ({
         ...entity, id: scopedId(entity.id), bookId: book.id,
-        facts: entity.facts.map((fact) => ({ ...fact, evidence: { ...fact.evidence, id: scopedId(fact.evidence.id) } })),
+        facts: entity.facts.map((fact) => ({ ...fact, evidence: { ...fact.evidence, id: scopedId(fact.evidence.id), sourceTitle: book.title } })),
       })));
       graph.relationships.push(...source.relationships.map((relationship) => ({
         ...relationship, id: scopedId(relationship.id), bookId: book.id,
         source: scopedId(relationship.source), target: scopedId(relationship.target),
-        evidence: { ...relationship.evidence, id: scopedId(relationship.evidence.id) },
+        evidence: { ...relationship.evidence, id: scopedId(relationship.evidence.id), sourceTitle: book.title },
       })));
     }
+    const visibleIds = new Set(graph.entities.map(e => e.id));
+    const cutoffs = new Map(books.map(b => [b.id, Math.min(b.completedChapter, b.analyzedChapters)]));
+    const matches = await tx.select().from(s.entityMatches).where(sql`${s.entityMatches.bookId} in (select id from books where universe_id = ${id} and owner_id = ${ownerId})`);
+    graph.matches = matches.filter(m => m.chapter <= (cutoffs.get(m.bookId) ?? 0) && m.otherChapter <= (cutoffs.get(m.otherBookId) ?? 0))
+      .map(m => ({ source: JSON.stringify([m.bookId, m.entityId]), target: JSON.stringify([m.otherBookId, m.otherEntityId]) }))
+      .filter(m => visibleIds.has(m.source) && visibleIds.has(m.target));
     return { universe, books, resources, graph };
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
 }
@@ -80,15 +87,6 @@ export async function attachBook(ownerId: string, universeId: string, bookId: st
   const updated = await db.update(s.books).set({ universeId })
     .where(and(eq(s.books.id, bookId), eq(s.books.ownerId, ownerId), isNull(s.books.universeId))).returning();
   if (!updated.length) throw new HTTPException(409, { message: "This book already belongs to a universe." });
-}
-
-function storagePath(key: string) {
-  // This adapter is deliberately confined to the development worktree. Production
-  // uses private R2; never silently write production uploads to an ephemeral disk.
-  if (process.env.NODE_ENV !== "development" || !process.env.LOREFOLD_WORKTREE_ID || !process.env.LOREFOLD_LOCAL_STORAGE_DIR || (process.env.LOREFOLD_STORAGE_MODE ?? "local") !== "local")
-    throw new HTTPException(503, { message: "File storage is not configured for this environment." });
-  if (!/^[0-9a-f-]{36}$/.test(key)) throw new Error("Invalid internal storage key");
-  return join(process.env.LOREFOLD_LOCAL_STORAGE_DIR, "uploads", key);
 }
 
 export async function uploadResource(ownerId: string, universeId: string, form: FormData): Promise<Resource> {
@@ -105,7 +103,8 @@ export async function uploadResource(ownerId: string, universeId: string, form: 
   const author = textField(form.get("author") ?? "", "Author", 200, false);
   const filename = (file.name.split(/[\\/]/).pop() ?? "upload").replace(/[\x00-\x1f\x7f]/g, "").slice(0, 180) || "upload";
   const id = randomUUID();
-  const path = storagePath(id);
+  let store;
+  try { store = storage(); } catch { throw new HTTPException(503, { message: "File storage is not configured for this environment." }); }
   const resource = { id, ownerId, universeId, kind: kind as Resource["kind"], title, filename, byteSize: file.size,
     storageKey: id, bookId: kind === "book" ? randomUUID() : null };
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -114,20 +113,17 @@ export async function uploadResource(ownerId: string, universeId: string, form: 
       (extension === ".epub" && !bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) ||
       ([".txt", ".md"].includes(extension) && bytes.includes(0)))
     throw new HTTPException(400, { message: "The file contents do not match the selected format." });
-  await mkdir(join(process.env.LOREFOLD_LOCAL_STORAGE_DIR!, "uploads"), { recursive: true, mode: 0o700 });
-  const handle = await open(path, "wx", 0o600);
+  await store.put(`uploads/${id}`, bytes);
   try {
-    await handle.writeFile(bytes);
-    await handle.close();
     await db.transaction(async (tx) => {
       if (resource.bookId) await tx.insert(s.books).values({
         id: resource.bookId, ownerId, universeId, title, author: author || "Unknown author", description: "",
       });
       await tx.insert(s.resources).values(resource);
+      if (resource.bookId) await enqueueImport(tx, ownerId, resource.bookId, id);
     });
   } catch (error) {
-    await handle.close().catch(() => {});
-    await unlink(path).catch(() => {});
+    await store.remove(`uploads/${id}`).catch(() => {});
     throw error;
   }
   return { id, kind, title, filename, byteSize: file.size, bookId: resource.bookId };
@@ -138,7 +134,7 @@ export async function downloadResource(ownerId: string, id: string) {
     .where(and(eq(s.resources.id, id), eq(s.resources.ownerId, ownerId)));
   if (!resource) throw new HTTPException(404, { message: "Resource not found." });
   try {
-    return { resource, bytes: await readFile(storagePath(resource.storageKey)) };
+    return { resource, bytes: await storage().get(`uploads/${resource.storageKey}`, MAX_UPLOAD_SIZE) };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT")
       throw new HTTPException(404, { message: "The uploaded file is unavailable." });

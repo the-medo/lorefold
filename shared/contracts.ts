@@ -1,6 +1,6 @@
 export type EntityKind = "character" | "location" | "faction" | "object";
 export type GraphMode = "chapter" | "story";
-export type Evidence = { id: string; chapter: number; quote: string };
+export type Evidence = { id: string; chapter: number; quote: string; sourceTitle?: string };
 export type Entity = {
   id: string;
   kind: EntityKind;
@@ -20,8 +20,10 @@ export type Graph = { entities: Entity[]; relationships: Relationship[] };
 export type UniverseGraph = {
   entities: (Entity & { bookId: string })[];
   relationships: (Relationship & { bookId: string })[];
+  matches?: { source: string; target: string }[];
 };
 export type Book = {
+  import?: import("./imports.js").ImportProgress | null;
   id: string;
   title: string;
   author: string;
@@ -64,6 +66,7 @@ export type Workspace = {
     text: string;
     recap: string;
     developments: string[];
+    recapEvidence?: { text: string; evidence: { chapter: number; quote: string }[] }[];
   } | null;
   graph: Graph;
 };

@@ -1,4 +1,5 @@
 import { ArrowRight, BookOpen, Check, FileCheck } from "lucide-react";
+import { ImportProgress } from "./ImportProgress.js";
 import type { Book } from "../../shared/contracts.js";
 
 export function Cover({ book, small = false }: { book: Book; small?: boolean }) {
@@ -31,7 +32,8 @@ export function BookCard({ book, openBook }: { book: Book; openBook: (id: string
           <span>{Math.round(book.completedChapter / book.totalChapters * 100)}%</span>
         </div>
         <progress value={book.completedChapter} max={book.totalChapters} />
-      </> : <p className="upload-pending">{book.resourceId ? "Your original file is saved. Chapter extraction and analysis are not available yet." : "No source file has been added to this book yet."}</p>}
+      </> : <p className="upload-pending">{book.resourceId ? "Your original file is saved. Analysis progress appears below." : "No source file has been added to this book yet."}</p>}
+      {book.import && <ImportProgress book={book} compact />}
       <button className="primary wide" onClick={() => openBook(book.id)}>
         {ready ? book.completedChapter ? "Continue exploring" : "Open book" : "View book"}<ArrowRight size={17} />
       </button>

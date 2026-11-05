@@ -7,12 +7,14 @@ export function EntityDetails({
   graph,
   cutoff,
   sourceTitle,
+  boundaryText,
   close,
 }: {
   entity: Entity;
   graph: Graph;
   cutoff: number;
   sourceTitle?: string;
+  boundaryText?: string;
   close: () => void;
 }) {
   const connections = graph.relationships.filter(
@@ -48,7 +50,7 @@ export function EntityDetails({
         <div className="fact" key={index}>
           <p>{fact.value}</p>
           <details>
-            <summary>{sourceTitle ?? "Source"} · Chapter {fact.evidence.chapter}</summary>
+            <summary>{fact.evidence.sourceTitle ?? sourceTitle ?? "Source"} · Chapter {fact.evidence.chapter}</summary>
             <blockquote>{fact.evidence.quote}</blockquote>
           </details>
         </div>
@@ -62,7 +64,7 @@ export function EntityDetails({
               <strong>{label(r.target)}</strong>
             </p>
             <details>
-              <summary>{sourceTitle ?? "Source"} · Chapter {r.evidence.chapter}</summary>
+              <summary>{r.evidence.sourceTitle ?? sourceTitle ?? "Source"} · Chapter {r.evidence.chapter}</summary>
               <blockquote>{r.evidence.quote}</blockquote>
             </details>
           </div>
@@ -71,7 +73,7 @@ export function EntityDetails({
         <p className="muted">No connections in this view yet.</p>
       )}
       <div className="boundary-note">
-        <ShieldCheck size={15} /> Known through chapter {cutoff}
+        <ShieldCheck size={15} /> {boundaryText ?? `Known through chapter ${cutoff}`}
       </div>
     </aside>
   );
