@@ -5,6 +5,7 @@ import {
   lazy,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -324,6 +325,12 @@ function BookPage({
   const [revision, setRevision] = useState(0);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<EntityKind | "all">("all");
+  const chapterList = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const list = chapterList.current;
+    const active = list?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (list && active) list.scrollTop = Math.max(0, active.offsetTop - (list.clientHeight - active.clientHeight) / 2);
+  }, [workspace?.book.id, workspace?.cutoff]);
   useEffect(() => {
     const controller = new AbortController();
     setWorkspace(null);
@@ -471,7 +478,7 @@ function BookPage({
                 <option value={0}>Not started</option>
                 {workspace.chapters.map((c) => (
                   <option key={c.number} value={c.number}>
-                    Chapter {c.number}
+                    {c.number}. {c.title || `Chapter ${c.number}`}
                   </option>
                 ))}
               </select>
@@ -493,12 +500,15 @@ function BookPage({
               read
             </span>
           </div>
-          <nav className="chapter-list" aria-label="Book chapters">
+          <nav ref={chapterList} className="chapter-list" aria-label="Book chapters" tabIndex={0}>
             {workspace.chapters.map((c) => (
               <button
                 key={c.number}
                 disabled={c.number > workspace.book.completedChapter}
                 className={c.number === workspace.cutoff ? "active" : ""}
+                aria-current={c.number === workspace.cutoff ? "page" : undefined}
+                aria-label={`Chapter ${c.number}: ${c.title || `Chapter ${c.number}`}${c.number > workspace.book.completedChapter ? " — Waiting to unfold" : ""}`}
+                title={c.title || `Chapter ${c.number}`}
                 onClick={() => {
                   setSelected(null);
                   navigate(
@@ -506,23 +516,18 @@ function BookPage({
                   );
                 }}
               >
-                <span className="chapter-number">
-                  {c.number > workspace.book.completedChapter ? (
-                    <LockKeyhole size={14} />
-                  ) : (
-                    c.number.toString().padStart(2, "0")
-                  )}
+                <span className="chapter-number" aria-hidden="true">
+                  {c.number.toString().padStart(2, "0")}
                 </span>
-                <span>
-                  <strong>Chapter {c.number}</strong>
+                <span className="chapter-label">
+                  <strong>{c.title || `Chapter ${c.number}`}</strong>
                   <small>
-                    {c.title ??
-                      (c.number <= workspace.book.completedChapter
-                        ? "Browse chapter"
-                        : "Waiting to unfold")}
+                    {c.number > workspace.book.completedChapter ? "Waiting to unfold"
+                      : c.analyzed ? "Browse chapter" : "Analysis pending"}
                   </small>
                 </span>
-                {c.number === workspace.cutoff && <ChevronRight size={15} />}
+                {c.number > workspace.book.completedChapter ? <LockKeyhole size={12} aria-hidden="true" />
+                  : c.number === workspace.cutoff && <ChevronRight size={14} aria-hidden="true" />}
               </button>
             ))}
           </nav>

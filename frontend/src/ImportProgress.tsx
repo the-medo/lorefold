@@ -13,7 +13,7 @@ export function ImportProgress({ book, refresh, compact = false }: { book: Book;
   }
   if (!job && !book.resourceId) return null;
   return <section className={`import-progress ${compact ? "compact" : ""}`} aria-label="Book analysis">
-    <strong>{job ? labels[job.status] : "Ready to analyze"}</strong>
+    <strong>{job ? job.status === "queued" && job.nextRetryAt ? "Automatic retry scheduled" : labels[job.status] : "Ready to analyze"}</strong>
     {job && <>
       <span className="import-provider">{job.mode === "mock" ? "Mock analysis · source excerpts, no AI calls" : `${job.model === "gpt-6-astra" ? "Astra" : "Sol 6.1"} · ${job.effort === "xhigh" ? "Extra high" : job.effort} · ${job.mode === "chatgpt-plan" ? "ChatGPT plan" : "AI Gateway"}`}</span>
       {job.totalParts > 0 && <><progress aria-label="Analysis progress" value={job.completedParts} max={job.totalParts} /><span>{book.analyzedChapters}/{book.totalChapters} chapters · {job.completedParts}/{job.totalParts} steps completed</span></>}
@@ -23,7 +23,8 @@ export function ImportProgress({ book, refresh, compact = false }: { book: Book;
     {!compact && <>
       <p className="muted">Analysis does not advance your reading progress. Finish chapters to reveal their recaps and map.</p>
       {refresh && (importing(book) ? <><button className="secondary" disabled={busy} onClick={() => control("pause")}>Pause analysis</button><small>Pauses after the current request is saved.</small></>
-        : (!job || (job.status !== "complete" && job.retryable)) && <><button className="primary" disabled={busy} onClick={() => control("resume")}>{job ? "Resume analysis" : "Analyze book"}</button>{job?.mode !== "mock" && <small>Resuming keeps completed parts. Failed or interrupted requests may consume usage again.</small>}</>)}
+        : (!job || job.status !== "complete") && <><button className="primary" disabled={busy} onClick={() => control("resume")}>{job ? "Resume analysis" : "Analyze book"}</button></>)}
+      {job?.mode !== "mock" && <small>Failed steps retry automatically up to three times, then pause. Resume analysis starts a new retry allowance and keeps completed parts. Retries may consume additional usage.</small>}
     </>}
     {error && <p className="error" role="alert">{error}</p>}
   </section>;

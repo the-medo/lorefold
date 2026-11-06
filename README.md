@@ -150,7 +150,11 @@ book (EPUB, PDF, TXT, or Markdown) or reference document (PDF, TXT, or Markdown)
 to 25 MB. Original files are private and downloadable. **My Library** still lists
 all your books; unassigned books can be added to a universe without changing progress.
 Books queue background extraction and chapter analysis automatically. The book page
-shows progress, recorded token usage, and pause/resume controls. Development defaults
+shows progress, recorded token usage, and pause/resume controls. Failed steps retry
+automatically three times, then pause with resume available; completed work is kept.
+Chapter navigation shows source titles in a compact, scrollable list, including
+unread chapters. Recaps and map knowledge still follow your reading progress.
+Development defaults
 to clearly labelled mock analysis; configure a connected ChatGPT plan or AI Gateway
 for real model calls. See [book imports](docs/book-imports.md).
 

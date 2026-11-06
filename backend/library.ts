@@ -15,7 +15,8 @@ const bookSelection = {
   import: sql<ImportProgress | null>`(select json_build_object(
     'status', j.status, 'mode', j.mode, 'model', j.model, 'effort', j.effort,
     'totalParts', j.total_parts, 'completedParts', j.completed_parts,
-    'inputTokens', j.input_tokens, 'outputTokens', j.output_tokens, 'error', j.error, 'retryable', j.retryable
+    'inputTokens', j.input_tokens, 'outputTokens', j.output_tokens, 'error', j.error, 'retryable', j.retryable,
+    'retryCount', j.retry_count, 'nextRetryAt', j.next_retry_at
   ) from import_jobs j where j.book_id = ${s.books.id})`,
   id: s.books.id,
   title: s.books.title,
@@ -73,9 +74,8 @@ export async function getWorkspace(
         .select({
           number: s.chapters.number,
           analyzed: s.chapters.analyzed,
-          title: sql<
-            string | null
-          >`case when ${s.chapters.number} <= ${cutoff} then ${s.chapters.title} else null end`,
+          // Source table-of-contents titles are visible before reading; knowledge is still gated.
+          title: s.chapters.title,
         })
         .from(s.chapters)
         .where(eq(s.chapters.bookId, bookId))

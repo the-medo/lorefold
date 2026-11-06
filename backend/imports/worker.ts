@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { randomUUID, createHash } from "node:crypto";
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db, pool } from "../db/client.js";
 import * as s from "../db/schema.js";
 import { extractBook, splitParts } from "./extract.js";
@@ -12,11 +12,13 @@ import type { Evidence } from "../../scripts/book-benchmark/analysis.js";
 import type { ProviderResult } from "../../scripts/book-benchmark/provider.js";
 import type { KnowledgeReader } from "../knowledge.js";
 import type { AnalysisPreference } from "../../shared/ai.js";
+import { archiveFailure, failureMessages, RETRY_DELAYS_MS, type FailureCode } from "./retry.js";
 
 type Job = typeof s.importJobs.$inferSelect;
 type Part = typeof s.importParts.$inferSelect;
 export type WorkerOptions = { signal?: AbortSignal; store?: Storage;
   connection?: PoolClient; bookIds?: string[];
+  now?: () => Date;
   provider?: (ownerId: string, job: Job) => Promise<(request: ImportRequest) => Promise<ProviderResult>> };
 const key = (bookId: string, chapter: number, part: number) => and(eq(s.importParts.bookId, bookId), eq(s.importParts.chapter, chapter), eq(s.importParts.part, part));
 const partVersion = (chapter: number, part: number) => `${IMPORT_VERSION}:${chapter}:${String(part).padStart(6, "0")}`;
@@ -28,6 +30,38 @@ async function fence(tx: KnowledgeReader, bookId: string, token: string) {
 }
 async function changeJob(bookId: string, token: string, values: Partial<typeof s.importJobs.$inferInsert>) {
   await db.transaction(async tx => { await fence(tx, bookId, token); await tx.update(s.importJobs).set({ ...values, updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId)); });
+}
+class ImportFailure extends Error {
+  constructor(readonly code: FailureCode) { super(failureMessages[code]); }
+}
+async function failJob(bookId: string, token: string, code: FailureCode, part: Part | undefined, stopped: boolean, now: Date) {
+  await db.transaction(async tx => {
+    const job = await fence(tx, bookId, token);
+    if (part) {
+      const [saved] = await tx.select().from(s.importParts).where(key(bookId, part.chapter, part.part));
+      if (saved && saved.status !== "complete") {
+        // A persistence error must reuse a received response, never repeat a successful call.
+        const discard = ["invalid_json", "validation_failed", "request_failed", "interrupted"].includes(code)
+          || (saved.status === "running" && !saved.response);
+        if (discard) {
+          await archiveFailure(tx, saved, code);
+          await tx.update(s.importParts).set({ status: "failed", error: code }).where(key(bookId, part.chapter, part.part));
+        }
+      }
+    }
+    const paused = stopped || job.pauseRequested;
+    const delay = RETRY_DELAYS_MS[job.retryCount];
+    const retry = !paused && delay !== undefined;
+    const reason = `${part ? `Chapter ${part.chapter}: ` : ""}${failureMessages[code]}`;
+    await tx.update(s.importJobs).set({ status: retry ? "queued" : "paused", retryable: true,
+      retryCount: retry ? job.retryCount + 1 : job.retryCount,
+      nextRetryAt: retry ? new Date(now.getTime() + delay) : null,
+      error: `${reason} ${retry ? `Automatic retry ${job.retryCount + 1} of ${RETRY_DELAYS_MS.length} scheduled.`
+        : paused ? "Analysis paused; resume when ready. Completed work is kept."
+        : "Automatic retries are exhausted. Resume analysis to try again; completed work is kept."}`,
+      updatedAt: new Date(),
+    }).where(eq(s.importJobs.bookId, bookId));
+  });
 }
 async function prepare(job: Job, token: string, store: Storage, signal?: AbortSignal) {
   const [resource] = await db.select().from(s.resources).where(eq(s.resources.id, job.resourceId));
@@ -50,7 +84,8 @@ async function prepare(job: Job, token: string, store: Storage, signal?: AbortSi
     await fence(tx, job.bookId, token);
     for (const row of rows) await tx.insert(s.chapters).values(row).onConflictDoNothing();
     for (const part of parts) await tx.insert(s.importParts).values(part).onConflictDoNothing();
-    await tx.update(s.importJobs).set({ status: "analyzing", totalParts: parts.length, updatedAt: new Date() }).where(eq(s.importJobs.bookId, job.bookId));
+    await tx.update(s.importJobs).set({ status: "analyzing", totalParts: parts.length, retryCount: 0,
+      nextRetryAt: null, error: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, job.bookId));
   });
 }
 async function candidates(bookId: string, chapter: Chapter, phase: "analysis" | "identity"): Promise<Candidate[]> {
@@ -123,12 +158,14 @@ async function persist(part: Part, request: ImportRequest, result: ImportAnalysi
     const remaining = await tx.select().from(s.importParts).where(and(eq(s.importParts.bookId, bookId), eq(s.importParts.chapter, part.chapter), ne(s.importParts.status, "complete")));
     await tx.update(s.chapters).set({ recap: recapEvidence.map(c => c.text).join("\n\n"), developments: recapEvidence.map(c => c.text), recapEvidence,
       analyzed: !remaining.length }).where(and(eq(s.chapters.bookId, bookId), eq(s.chapters.number, part.chapter)));
-    await tx.update(s.importJobs).set({ completedParts: sql`${s.importJobs.completedParts} + 1`, updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
+    await tx.update(s.importJobs).set({ completedParts: sql`${s.importJobs.completedParts} + 1`,
+      retryCount: 0, nextRetryAt: null, error: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
   });
 }
 
 /** The database advisory lock enforces one import across every worker process. */
 export async function runNextImport(options: WorkerOptions = {}): Promise<boolean> {
+  const now = options.now ?? (() => new Date());
   const connection = options.connection ?? await pool.connect(); const controller = new AbortController();
   const signal = AbortSignal.any([controller.signal, ...(options.signal ? [options.signal] : [])]);
   const lost = () => controller.abort(); connection.on("error", lost);
@@ -136,27 +173,36 @@ export async function runNextImport(options: WorkerOptions = {}): Promise<boolea
   try {
     const result = await connection.query("select pg_try_advisory_lock(1280266821, 1) as locked");
     locked = result.rows[0].locked; if (!locked) return false;
-    const [job] = await db.select().from(s.importJobs).where(and(inArray(s.importJobs.status, ["queued", "extracting", "analyzing"]), options.bookIds ? inArray(s.importJobs.bookId, options.bookIds) : undefined))
+    const [job] = await db.select().from(s.importJobs).where(and(inArray(s.importJobs.status, ["queued", "extracting", "analyzing"]),
+      or(isNull(s.importJobs.nextRetryAt), lte(s.importJobs.nextRetryAt, now())),
+      options.bookIds ? inArray(s.importJobs.bookId, options.bookIds) : undefined))
       .orderBy(asc(s.importJobs.createdAt)).limit(1);
     if (!job || signal.aborted) return false;
     const token = randomUUID();
-    await db.update(s.importJobs).set({ runToken: token, status: job.totalParts ? "analyzing" : "extracting", updatedAt: new Date() }).where(eq(s.importJobs.bookId, job.bookId));
+    await db.update(s.importJobs).set({ runToken: token, status: job.totalParts ? "analyzing" : "extracting",
+      nextRetryAt: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, job.bookId));
+    let activePart: Part | undefined;
     try {
       const store = options.store ?? storage();
       if (!job.totalParts) {
         try { await prepare(job, token, store, signal); }
-        catch { await changeJob(job.bookId, token, { status: "failed", error: "Extraction failed. Use an unencrypted EPUB, UTF-8 text, or a text-based PDF. Scanned PDFs need OCR first. Check source storage and extraction tools before retrying.", retryable: true }); return true; }
+        catch { throw new ImportFailure("extraction_failed"); }
       }
       const [owner] = await db.select().from(s.books).where(eq(s.books.id, job.bookId));
       const parts = await db.select().from(s.importParts).where(and(eq(s.importParts.bookId, job.bookId), ne(s.importParts.status, "complete"))).orderBy(asc(s.importParts.chapter), asc(s.importParts.part));
       let provider: ((r: ImportRequest) => Promise<ProviderResult>) | undefined;
       for (const part of parts) {
+        activePart = part;
         const [current] = await db.select().from(s.importJobs).where(eq(s.importJobs.bookId, job.bookId));
-        if (signal.aborted || current.pauseRequested) { await changeJob(job.bookId, token, { status: "paused" }); return true; }
+        if (signal.aborted || current.pauseRequested) { await changeJob(job.bookId, token, { status: "paused", retryable: true }); return true; }
         if (part.status === "running" && !part.response) {
+          throw new ImportFailure("interrupted");
+        }
+        if (part.status === "failed") {
           await db.transaction(async tx => { await fence(tx, job.bookId, token);
-            await tx.update(s.importParts).set({ status: "failed", error: "interrupted" }).where(key(job.bookId, part.chapter, part.part)); });
-          await changeJob(job.bookId, token, { status: "paused", error: "The previous request was interrupted and may have consumed usage. Resume to retry this part; completed work is kept." }); return true;
+            await archiveFailure(tx, part, part.error ?? "processing_failed");
+            await tx.update(s.importParts).set({ status: "pending", response: null, error: null }).where(key(job.bookId, part.chapter, part.part)); });
+          part.response = null;
         }
         const chapter: Chapter = JSON.parse((await store.get(part.sourceKey)).toString("utf8"));
         let request = part.request;
@@ -180,35 +226,31 @@ export async function runNextImport(options: WorkerOptions = {}): Promise<boolea
           try {
             if (part.phase !== "identity" || (request.candidates.length && request.analysis!.entities.length)) provider ??= options.provider ? await options.provider(owner.ownerId, job) : await importProvider(owner.ownerId, job.mode,
               { model: job.model, effort: job.effort } as AnalysisPreference, signal);
-          } catch { await changeJob(job.bookId, token, { status: "paused", error: "Analysis is not connected. Check your ChatGPT connection or the configured gateway, then resume." }); return true; }
+          } catch { throw new ImportFailure("connection_failed"); }
           await db.transaction(async tx => { await fence(tx, job.bookId, token);
             await tx.update(s.importParts).set({ status: "running", request, attempts: part.attempts + 1 }).where(key(job.bookId, part.chapter, part.part)); });
           try {
             signal.throwIfAborted(); response = part.phase === "identity" && (!request.candidates.length || !request.analysis!.entities.length)
               ? { text: '{"matches":[]}', usage: null, reportedModel: "no-matching-candidates", truncated: false }
               : await provider!(request);
-            await db.transaction(async tx => { await fence(tx, job.bookId, token);
-              await tx.update(s.importParts).set({ status: "received", response }).where(key(job.bookId, part.chapter, part.part));
-              await tx.update(s.importJobs).set({ inputTokens: sql`${s.importJobs.inputTokens} + ${response!.usage?.inputTokens ?? 0}`,
-                outputTokens: sql`${s.importJobs.outputTokens} + ${response!.usage?.outputTokens ?? 0}` }).where(eq(s.importJobs.bookId, job.bookId)); });
           } catch {
-            await db.transaction(async tx => { await fence(tx, job.bookId, token);
-              await tx.update(s.importParts).set({ status: "failed", error: "request_failed" }).where(key(job.bookId, part.chapter, part.part)); });
-            await changeJob(job.bookId, token, { status: "paused", retryable: part.attempts + 1 < 3, error: part.attempts + 1 >= 3 ? "This part has failed three attempts. Completed chapters are kept; upload a corrected source to start again." : "The model request failed or was interrupted. Check connection, model access and usage limits. Resume may consume usage again; completed parts will not be repeated." }); return true;
+            throw new ImportFailure("request_failed");
           }
+          await db.transaction(async tx => { await fence(tx, job.bookId, token);
+            await tx.update(s.importParts).set({ status: "received", response }).where(key(job.bookId, part.chapter, part.part));
+            await tx.update(s.importJobs).set({ inputTokens: sql`${s.importJobs.inputTokens} + ${response!.usage?.inputTokens ?? 0}`,
+              outputTokens: sql`${s.importJobs.outputTokens} + ${response!.usage?.outputTokens ?? 0}` }).where(eq(s.importJobs.bookId, job.bookId)); });
         }
         let analysis: ImportAnalysis;
         try { analysis = validateImport(response, request); }
-        catch {
-          await db.transaction(async tx => { await fence(tx, job.bookId, token);
-            await tx.update(s.importParts).set({ status: "failed", error: "validation_failed" }).where(key(job.bookId, part.chapter, part.part)); });
-          await changeJob(job.bookId, token, { status: "failed", retryable: part.attempts + (part.response ? 0 : 1) < 3, error: part.attempts + (part.response ? 0 : 1) >= 3 ? "This part failed validation three times. No knowledge from this part was published; completed chapters are kept." : "The model returned invalid notes or unsupported citations. No knowledge from this part was published. Retry to request a new analysis." }); return true;
-        }
+        catch (error) { throw new ImportFailure(error instanceof SyntaxError ? "invalid_json" : "validation_failed"); }
         await persist(part, request, analysis, token);
       }
-      await changeJob(job.bookId, token, { status: "complete", error: null });
-    } catch {
-      await changeJob(job.bookId, token, { status: "paused", error: "Processing stopped. Completed work and received responses are saved. Check worker storage and database, then resume." }).catch(() => {});
+      await changeJob(job.bookId, token, { status: "complete", error: null, retryCount: 0, nextRetryAt: null });
+    } catch (error) {
+      // If the database is unavailable, the last durable checkpoint remains for the next worker run.
+      await failJob(job.bookId, token, error instanceof ImportFailure ? error.code : "processing_failed",
+        activePart, signal.aborted, now());
     }
     return true;
   } finally {

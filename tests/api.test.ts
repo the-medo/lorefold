@@ -144,12 +144,12 @@ test("library ownership is checked for reads and progress writes", async () => {
   assert.equal((await setProgress(3, otherBookId)).status, 404);
 });
 
-test("unread books contain no recaps, source text, chapter titles, or knowledge", async () => {
+test("unread books expose source chapter titles but no recaps, source text, or knowledge", async () => {
   const data = await workspace(3);
   assert.equal(data.cutoff, 0);
   assert.equal(data.chapter, null);
   assert.deepEqual(data.graph, { entities: [], relationships: [] });
-  assert.ok(data.chapters.every((c) => c.title === null));
+  assert.deepEqual(data.chapters.map(c => c.title), ["A light in the fog", "The keeper’s name", "The tidekeepers"]);
   assert.doesNotMatch(JSON.stringify(data), /Iona|Tidekeepers|grey coat/);
 });
 
@@ -173,7 +173,7 @@ test("chapter 1 clamps forged later requests and hides later identity and allegi
         (e) => e.chapter <= 1 && e.evidence.chapter <= 1,
       ),
     );
-    assert.equal(data.chapters[1].title, null);
+    assert.equal(data.chapters[1].title, "The keeper’s name");
   }
 });
 
