@@ -719,17 +719,17 @@ progress::-moz-progress-bar {
   min-height: calc(100vh - 147px);
 }
 .chapter-sidebar {
-  width: 270px;
+  width: 250px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
-  padding: calc(32px * var(--spacing)) calc(22px * var(--spacing));
+  padding: calc(20px * var(--spacing)) calc(16px * var(--spacing));
   background: var(--surface-alt);
 }
 .mini-book {
   display: flex;
   gap: calc(13px * var(--spacing));
   align-items: center;
-  margin-bottom: 29px;
+  margin-bottom: 18px;
 }
 .mini-book h2 {
   font-family: var(--font-heading);
@@ -785,7 +785,7 @@ progress::-moz-progress-bar {
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 1);
   padding: calc(13px * var(--spacing));
-  margin-bottom: 31px;
+  margin-bottom: 18px;
 }
 .progress-editor label {
   font-size: calc(var(--ui-size) * 0.7143);
@@ -798,6 +798,7 @@ progress::-moz-progress-bar {
   gap: calc(7px * var(--spacing));
 }
 .progress-editor select {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 0.625);
   background: var(--surface);
@@ -830,14 +831,21 @@ progress::-moz-progress-bar {
 .chapter-list {
   display: flex;
   flex-direction: column;
-  gap: calc(7px * var(--spacing));
+  gap: calc(2px * var(--spacing));
+  max-height: min(50dvh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  position: relative;
 }
 .chapter-list button {
   display: flex;
   align-items: center;
-  gap: calc(12px * var(--spacing));
+  gap: calc(7px * var(--spacing));
   text-align: left;
-  padding: calc(12px * var(--spacing)) calc(9px * var(--spacing));
+  padding: calc(6px * var(--spacing)) calc(7px * var(--spacing));
+  min-height: 40px;
+  flex-shrink: 0;
   border-radius: calc(var(--radius) * 0.875);
   background: none;
   opacity: 1;
@@ -852,31 +860,40 @@ progress::-moz-progress-bar {
 .chapter-number {
   font-size: calc(var(--ui-size) * 0.7143);
   width: 22px;
+  flex-shrink: 0;
   color: var(--muted);
   display: grid;
   place-items: center;
+}
+.chapter-label {
+  min-width: 0;
+  flex: 1;
 }
 .chapter-list strong {
   display: block;
   font-size: calc(var(--ui-size) * 0.7857);
   font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chapter-list small {
   display: block;
   font-size: calc(var(--ui-size) * 0.6429);
-  margin-top: 3px;
+  margin-top: 1px;
   color: var(--muted);
 }
 .chapter-list button > svg {
   margin-left: auto;
+  flex-shrink: 0;
 }
 .chapter-list button:disabled strong {
   color: var(--muted);
 }
 .sidebar-note {
   border-top: 1px solid var(--border);
-  padding-top: calc(20px * var(--spacing));
-  margin-top: 28px;
+  padding-top: calc(12px * var(--spacing));
+  margin-top: 16px;
   display: flex;
   align-items: flex-start;
   gap: calc(9px * var(--spacing));
@@ -1377,7 +1394,7 @@ progress::-moz-progress-bar {
     height: 500px;
   }
   .chapter-sidebar {
-    width: 300px;
+    width: 270px;
   }
   .details {
     width: 320px;
@@ -1546,20 +1563,14 @@ progress::-moz-progress-bar {
     margin-top: 20px;
   }
   .chapter-list {
-    flex-direction: row;
-    gap: calc(5px * var(--spacing));
+    max-height: min(35dvh, 280px);
   }
   .chapter-list button {
-    flex: 1;
-    justify-content: center;
-    gap: calc(6px * var(--spacing));
-    padding: calc(10px * var(--spacing)) calc(5px * var(--spacing));
+    min-height: 44px;
   }
   .chapter-list strong {
     font-size: calc(var(--ui-size) * 0.7143);
   }
-  .chapter-list small,
-  .chapter-list button > svg,
   .sidebar-note {
     display: none;
   }

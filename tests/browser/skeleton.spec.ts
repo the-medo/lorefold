@@ -63,7 +63,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
     page.getByRole("heading", { name: "A light in the fog" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Chapter 2 Waiting/ }),
+    page.getByRole("button", { name: /Chapter 2:.*Waiting/ }),
   ).toBeDisabled();
   await page.screenshot({ path: "test-results/recap.png", fullPage: true });
   await page.getByRole("tab", { name: "Story map" }).click();
@@ -163,7 +163,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
     page.getByRole("button", { name: "Bellweather Harbor", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Chapter 1 A light", exact: false })
+    .getByRole("button", { name: "Chapter 1: A light", exact: false })
     .click();
   await expect(page.getByLabel("I’ve finished")).toHaveValue("3");
   await expect(

@@ -116,14 +116,35 @@ are durable private records. Each extraction or matching response is saved befor
 transaction. That transaction commits all part facts and its checkpoint together;
 a restart can revalidate the saved response without another model call.
 
-An interrupted request with no saved response has unknown usage. It pauses for
-explicit resume, which may repeat that unsuccessful request. Completed parts are
-never replayed. Invalid output also pauses and publishes no knowledge from that
-part. An explicit retry is limited to three inference attempts per part. A pause
-request finishes/saves the current request before stopping. Worker shutdown aborts
-inference; unknown requests follow the same recovery rule. Reported token totals
-include received responses, including rejected output, but cannot include unknown
-provider usage. Reading progress stays separate throughout.
+Failed steps get three automatic retries after the initial attempt, with delays of
+2, 10, and 30 seconds. This covers malformed JSON, unsupported citations and other
+validation failures, model/connection errors, extraction, and storage/processing
+errors. Retry counts and the next retry time persist in PostgreSQL across worker
+restarts. Delayed jobs release the worker so other queued books can proceed.
+Each completed step resets the retry allowance for the next step.
+
+After that allowance is exhausted, the import pauses with **Resume analysis**
+available. Resume grants a fresh allowance for the unfinished step, including for
+jobs exhausted under the old three-attempt cap. Lifetime inference counts, received
+token usage, completed parts, and reading progress are preserved. Rejected responses
+are kept privately in `import_failures` before replacement. Invalid output never
+publishes knowledge, and completed parts are never replayed.
+
+An interrupted request with no saved response has unknown usage; its bounded retry
+may consume usage again. A saved response is reused after a persistence error,
+without another model call or duplicate token accounting. An explicit pause takes
+effect after the current request is saved and also cancels a scheduled retry.
+Graceful worker shutdown aborts inference and leaves the job paused for resume.
+Reported token totals include rejected responses but cannot include unknown
+provider usage. Retries never switch providers or fall back to a paid API.
+
+Deploy the web image first to apply migration `0008_resumable_import_retries`, then
+deploy the worker from the same revision. Existing failed jobs can be resumed from
+their book page; no counter reset or re-upload is required.
+
+The chapter list displays extracted source titles even before reading or analysis.
+It is a compact, scrollable table of contents; unread chapters remain locked and
+unvalidated recaps, source text, and map knowledge remain unavailable.
 
 Private model responses contain source text; keep database backups private. Files
 written just before a process/DB failure can become unreferenced; automatic orphan

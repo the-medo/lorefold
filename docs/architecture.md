@@ -116,8 +116,9 @@ The worker extracts the complete linear EPUB reading order (including fragment
 navigation), splits long chapters into bounded parts, and saves text to private
 storage. Chapter rows hold object keys. Validated part writes/checkpoints are atomic,
 and no chapter knowledge is published until all its parts finish. Saved responses
-can be resumed without another call; uncertain in-flight calls require explicit
-resume and may consume usage again. See [book import operations](book-imports.md)
+can be resumed without another call. Failed steps get three automatic retries with
+durable backoff, then pause with manual resume always available. Uncertain in-flight
+calls may consume usage again. See [book import operations](book-imports.md)
 for limits, provider setup, recovery, and testing details.
 
 Books belong to a user. Every library, workspace, and progress query checks that
@@ -125,8 +126,9 @@ ownership. Facts and relationships reference chapter-specific evidence with sour
 quotes and an extraction version; appearances control the chapter graph scope.
 The workspace transaction reads a consistent database snapshot and uses
 `min(selected chapter, saved completed chapter, chapter count)` for the response.
-It filters facts, evidence, edges, recaps, source text, and chapter titles before
-serialization. It resolves the latest permitted label and cumulative permitted
+It filters facts, evidence, edges, recaps, and source text before serialization.
+Source chapter titles remain visible as table-of-contents metadata before reading.
+It resolves the latest permitted label and cumulative permitted
 descriptions/aliases, and drops edges without visible endpoints. The chapter map
 includes entities appearing in that chapter and relationships evidenced there;
 story-so-far includes everything established through the cutoff.

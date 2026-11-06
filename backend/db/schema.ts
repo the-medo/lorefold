@@ -323,6 +323,8 @@ export const importJobs = pgTable("import_jobs", {
   inputTokens: integer("input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
   error: text(), retryable: boolean().notNull().default(true),
+  retryCount: integer("retry_count").notNull().default(0),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, t => [check("import_status", sql`${t.status} in ('queued','extracting','analyzing','paused','failed','complete')`),
   check("import_mode", sql`${t.mode} in ('mock','chatgpt-plan','gateway')`)]);
@@ -340,6 +342,16 @@ export const importParts = pgTable("import_parts", {
   error: text(),
 }, t => [primaryKey({ columns: [t.bookId, t.chapter, t.part] }),
   foreignKey({ columns: [t.bookId, t.chapter], foreignColumns: [chapters.bookId, chapters.number] }).onDelete("cascade")]);
+
+// Retain rejected responses privately when automatic or manual retries replace them.
+export const importFailures = pgTable("import_failures", {
+  bookId: text("book_id").notNull(),
+  chapter: integer().notNull(), part: integer().notNull(), attempt: integer().notNull(),
+  error: text().notNull(),
+  response: jsonb().$type<import("../../scripts/book-benchmark/provider.js").ProviderResult>(),
+  createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.bookId, t.chapter, t.part, t.attempt] }),
+  foreignKey({ columns: [t.bookId, t.chapter, t.part], foreignColumns: [importParts.bookId, importParts.chapter, importParts.part] }).onDelete("cascade")]);
 
 // No global name or description: a cross-book identity is visible only when both
 // endpoint facts/evidence are visible. Each book retains its own knowledge.

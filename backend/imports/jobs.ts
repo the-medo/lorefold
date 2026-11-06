@@ -1,10 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import { db } from "../db/client.js";
 import * as s from "../db/schema.js";
 import { defaultAnalysisPreference } from "../../shared/ai.js";
 import { importMode } from "./provider.js";
 import type { KnowledgeReader } from "../knowledge.js";
+import { archiveFailure } from "./retry.js";
 
 export async function enqueueImport(tx: KnowledgeReader, ownerId: string, bookId: string, resourceId: string) {
   const [preference] = await tx.select().from(s.userAiPreferences).where(eq(s.userAiPreferences.userId, ownerId));
@@ -24,17 +25,18 @@ export async function controlImport(ownerId: string, bookId: string, action: "pa
     }
     if (job.status === "complete") throw new HTTPException(409, { message: "This book is already analyzed." });
     if (action === "pause") {
-      await tx.update(s.importJobs).set({ pauseRequested: true, ...(job.status === "queued" ? { status: "paused" as const } : {}), updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
+      await tx.update(s.importJobs).set({ pauseRequested: true, ...(job.status === "queued" ? { status: "paused" as const, nextRetryAt: null } : {}), updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
       return;
     }
     if (!["failed", "paused"].includes(job.status)) throw new HTTPException(409, { message: "Analysis is already queued or running." });
-    if (!job.retryable) throw new HTTPException(409, { message: "This part has used three attempts. Keep the completed chapters or upload a corrected source." });
-    const [{ exhausted }] = await tx.select({ exhausted: sql<number>`count(*)`.mapWith(Number) }).from(s.importParts)
-      .where(and(eq(s.importParts.bookId, bookId), eq(s.importParts.status, "failed"), sql`${s.importParts.attempts} >= 3`));
-    if (exhausted) throw new HTTPException(409, { message: "This part failed three attempts. Keep the completed chapters and try a corrected source." });
-    // Explicit user retry authorizes repeating only an unsuccessful/unknown call.
+    const failed = await tx.select().from(s.importParts)
+      .where(and(eq(s.importParts.bookId, bookId), eq(s.importParts.status, "failed")));
+    for (const part of failed) await archiveFailure(tx, part, part.error ?? "processing_failed");
+    // A new retry allowance never erases lifetime attempts or replays completed parts.
+    // This also recovers jobs exhausted under the previous permanent three-attempt cap.
     await tx.update(s.importParts).set({ status: "pending", response: null, error: null })
       .where(and(eq(s.importParts.bookId, bookId), eq(s.importParts.status, "failed")));
-    await tx.update(s.importJobs).set({ status: "queued", pauseRequested: false, error: null, runToken: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
+    await tx.update(s.importJobs).set({ status: "queued", pauseRequested: false, error: null,
+      retryable: true, retryCount: 0, nextRetryAt: null, runToken: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, bookId));
   });
 }
