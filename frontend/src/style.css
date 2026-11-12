@@ -1193,16 +1193,6 @@ progress::-moz-progress-bar {
 }
 .map-node-label[hidden],
 .map-edge-label[hidden] { display: none; }
-.map-dimension {
-  position: absolute;
-  top: 17px;
-  left: 18px;
-  font-size: calc(var(--ui-size) * 0.6429);
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  color: var(--muted);
-  pointer-events: none;
-}
 .map-hint {
   position: absolute;
   left: 18px;
@@ -1927,3 +1917,111 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
 .merge-pair blockquote { margin: 12px 0; border-left: 2px solid var(--border); padding-left: 12px; line-height: 1.5; }
 .merge-pair blockquote small { display: block; margin-bottom: 4px; }
 .merge-success { color: var(--success); margin-bottom: 16px; align-items: center; }
+
+.graph-three {
+  --map-ink: var(--text);
+  --map-secondary: var(--muted);
+  --map-paper: var(--map-background);
+  background-color: var(--map-paper);
+}
+.graph-three[data-map-style="bookplate"] {
+  --map-paper: color-mix(in srgb, var(--map-background) 78%, #eacda0);
+  background-image: radial-gradient(color-mix(in srgb, var(--map-ink) 14%, transparent) 0.7px, transparent 0.9px);
+  background-size: 16px 16px;
+}
+.graph-three[data-map-style="observatory"] {
+  --map-paper: color-mix(in srgb, #0d1527 94%, var(--map-background));
+  --map-ink: #edf2ff;
+  --map-secondary: #a3b4cc;
+  background-image:
+    radial-gradient(circle at 15px 31px, #b5cced80 0.8px, transparent 1.2px),
+    radial-gradient(circle at 42px 19px, #92b3e455 0.7px, transparent 1.1px),
+    radial-gradient(circle at 25px 53px, #93a2cc45 0.9px, transparent 1.2px),
+    radial-gradient(ellipse at 48% 54%, #28385888, transparent 75%);
+  background-size: 137px 103px, 83px 127px, 199px 157px, cover;
+}
+.graph-three[data-map-style="wayfinder"] {
+  --map-paper: color-mix(in srgb, var(--map-background) 48%, var(--surface));
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--map-edge) 13%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--map-edge) 13%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.map-style-picker {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--map-ink);
+  background: var(--map-paper);
+  border: 1px solid color-mix(in srgb, var(--map-ink) 24%, transparent);
+  border-radius: 6px;
+}
+.map-style-picker select {
+  padding: 5px 25px 5px 30px;
+  appearance: none;
+  cursor: pointer;
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  font-size: calc(var(--ui-size) * 0.85);
+  font-weight: 600;
+}
+.map-style-picker option { background: var(--map-paper); color: var(--map-ink); }
+.map-style-picker svg { position: absolute; pointer-events: none; }
+.map-style-picker svg:first-child { left: 9px; }
+.map-style-picker svg:last-child { right: 8px; }
+.graph-three .map-labels { color: var(--map-ink); }
+.graph-three .graph-fallback { color: var(--map-secondary); }
+.graph-three .map-node-label {
+  background: var(--map-paper);
+  color: var(--map-ink);
+  line-height: 1.25;
+  padding: 2px 6px;
+}
+.graph-three[data-map-style="bookplate"] .map-node-label {
+  font: 600 calc(var(--ui-size) * 1.15)/1.15 var(--font-heading);
+}
+.graph-three[data-map-style="observatory"] .map-node-label {
+  font: 550 calc(var(--ui-size) * 0.77)/1.3 ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.graph-three[data-map-style="wayfinder"] .map-node-label {
+  border: 1px solid color-mix(in srgb, var(--map-ink) 35%, transparent);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: calc(var(--ui-size) * 0.9);
+  font-weight: 700;
+}
+.graph-three .map-node-label:hover,
+.graph-three .map-node-label.is-selected { border-color: var(--map-ink); }
+.graph-three .map-hint { color: var(--map-secondary); background: var(--map-paper); }
+
+.graph-three[data-map-style="observatory"] .graph-controls {
+  background: var(--map-paper);
+  border-color: #4e5c72;
+  color: var(--map-ink);
+}
+.graph-three[data-map-style="observatory"] .graph-controls button:hover { background: #32415a; }
+
+@media (max-width: 700px) {
+  .graph-three[data-map-style="bookplate"] .map-node-label { font-size: var(--ui-size); }
+}
+
+.graph-three[data-map-style="circles"] {
+  --map-paper: color-mix(in srgb, var(--surface) 72%, var(--map-background));
+}
+.graph-three[data-map-style="circles"] .map-node-label {
+  opacity: var(--depth-opacity, 1);
+  font-weight: 500;
+  border-radius: 4px;
+}
+.graph-three[data-map-style="circles"] .map-node-label.is-selected {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.graph-three[data-map-style="circles"] .map-node-label.is-muted { opacity: calc(0.4 * var(--depth-opacity, 1)); }

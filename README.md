@@ -105,10 +105,12 @@ identity reveals. Try finishing chapter 3, then browsing chapter 1: later names 
 facts disappear, while saved progress stays at 3. Set progress back to 0 to start over.
 
 The story map is a 3D scene: drag to orbit, scroll or pinch to zoom, and right-drag
-or use two fingers to pan. Select a sphere or label for its evidence and highlighted
+or use two fingers to pan. Select a circular marker or label for its evidence and highlighted
 connections; reset, focus, and fullscreen controls are in the bottom corner. Arrow
 keys orbit a focused map; plus/minus zoom and Home resets. The entity list remains
 available when WebGL is unavailable. Reduced-motion settings disable camera transitions.
+Use the map style picker to compare markers. The development preview at
+`/previews/map/` shows the same renderer with 200 synthetic entities and 230 connections.
 
 The selected Lorefold icon is **Folded worlds**, available at `/brand/lorefold.svg`.
 The five original SVG options and a ZIP download are at `/brand/icon-options/index.html`.

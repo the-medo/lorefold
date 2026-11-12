@@ -111,7 +111,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
   await expect(page.getByText("The 3D map needs WebGL.", { exact: false })).toHaveCount(0);
   await expect(graphCanvas).toHaveCount(1);
   await expect(maraLabel).toBeVisible();
-  // Pick the sphere itself using its projected center, not the HTML label/list.
+  // Pick the marker itself using its projected center.
   await graphCanvas.click({ position: await nodePosition() });
   await expect(
     page.getByRole("heading", { name: "Mara", exact: true }),
@@ -131,6 +131,7 @@ test("private reader can explore, rewind, reload, search, and sign out on deskto
   ).toBeVisible();
   await expect(page.locator("body")).not.toContainText("Iona");
   await expect(page.locator("body")).not.toContainText("Tidekeepers");
+  await page.getByRole("combobox", { name: "Map style" }).selectOption("wayfinder");
   await expect(page.getByRole("button", { name: "Inspect The keeper", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.screenshot({ path: "test-results/graph.png", fullPage: true });
   await page.getByRole("button", { name: "Expand map", exact: true }).click();
@@ -247,6 +248,15 @@ test("touch orbit and pinch zoom work with reduced motion on mobile", async ({ p
   await touch("touchEnd", []);
   await expect.poll(async () => Math.hypot((await position()).x - initial.x, (await position()).y - initial.y)).toBeGreaterThan(5);
   await expect(page.getByLabel("Entity details")).toHaveCount(0);
+  const orbited = await position();
+  const picker = page.getByRole("combobox", { name: "Map style" });
+  const map = page.getByRole("region", { name: "Interactive 3D story map" });
+  for (const style of ["observatory", "circles", "wayfinder", "bookplate"]) {
+    await picker.selectOption(style);
+    await expect(map).toHaveAttribute("data-map-style", style);
+    // Circles spreads these same nodes further along the depth axis.
+    if (style !== "circles") expect(await position()).toEqual(orbited);
+  }
   await page.getByRole("button", { name: "Reset map view" }).click();
   await expect.poll(async () => Math.hypot((await position()).x - initial.x, (await position()).y - initial.y)).toBeLessThan(1);
   const distance = async () => { const p = await position(); return Math.hypot(p.x - bounds.width / 2, p.y - bounds.height / 2); };
