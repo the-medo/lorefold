@@ -5,20 +5,21 @@ import * as s from "./db/schema.js";
 import { mergedEntityIds, readPointMerges, readVisibleFacts, type KnowledgeReader, type VisibleFact } from "./knowledge.js";
 import { importMode, liveAnalysisProvider } from "./imports/provider.js";
 import { availableFrom, mergeBatches, mergePrompt, mockPointMerges, validatePairs } from "./point-merge-analysis.js";
-import { defaultAnalysisPreference } from "../shared/ai.js";
+import { HTTPException } from "hono/http-exception";
+import type { ImportMode } from "../shared/imports.js";
+import { defaultAnalysisPreference, type AnalysisPreference } from "../shared/ai.js";
 
-async function ownedBook(tx: KnowledgeReader, email: string, bookId: string) {
-  const [book] = await tx.select({ ownerId: s.books.ownerId, title: s.books.title })
-    .from(s.books).innerJoin(s.user, eq(s.user.id, s.books.ownerId))
-    .where(and(eq(s.books.id, bookId), eq(s.user.email, email.trim().toLowerCase())));
-  if (!book) throw new Error("Book not found for this owner.");
+export async function requireMergeBook(tx: KnowledgeReader, ownerId: string, bookId: string) {
+  const [book] = await tx.select({ title: s.books.title }).from(s.books)
+    .where(and(eq(s.books.id, bookId), eq(s.books.ownerId, ownerId)));
+  if (!book) throw new HTTPException(404, { message: "Book not found for this owner." });
   return book;
 }
 
 type Endpoint = { label: string; fact: VisibleFact };
 type Proposal = { first: Endpoint; second: Endpoint; fromChapter: number; reason: string };
-type MergePlan = {
-  version: 1; ownerId: string; bookId: string; title: string; provider: string; suggestions: (Proposal & { number: number })[];
+export type MergePlan = {
+  version: 1; throughChapter?: number; ownerId: string; bookId: string; title: string; provider: string; suggestions: (Proposal & { number: number })[];
 };
 
 function directory(facts: VisibleFact[]) {
@@ -32,7 +33,7 @@ function directory(facts: VisibleFact[]) {
   return (firstId: string, secondId: string, reason: string): Proposal => {
     const a = byId.get(firstId), b = byId.get(secondId);
     if (!a || !b || a.entityId === b.entityId || a.kind !== b.kind || !labels.has(a.entityId) || !labels.has(b.entityId))
-      throw new Error("Missing or incompatible merge endpoints.");
+      throw new HTTPException(409, { message: "A point has changed. Analyze the book again." });
     return {
       first: { label: labels.get(a.entityId)!, fact: a }, second: { label: labels.get(b.entityId)!, fact: b },
       fromChapter: Math.max(availableFrom(a), availableFrom(b), firstNamed.get(a.entityId)!, firstNamed.get(b.entityId)!),
@@ -41,25 +42,27 @@ function directory(facts: VisibleFact[]) {
   };
 }
 
-export async function suggestPointMerges(email: string, bookId: string): Promise<MergePlan> {
+export async function suggestPointMerges(ownerId: string, bookId: string,
+  mode: ImportMode = importMode(), savedPreference?: AnalysisPreference, signal?: AbortSignal): Promise<MergePlan> {
   const { book, preference, facts, links } = await db.transaction(async tx => {
-    const book = await ownedBook(tx, email, bookId);
-    const [saved] = await tx.select().from(s.userAiPreferences).where(eq(s.userAiPreferences.userId, book.ownerId));
+    const book = await requireMergeBook(tx, ownerId, bookId);
+    const [saved] = savedPreference ? [savedPreference] : await tx.select().from(s.userAiPreferences).where(eq(s.userAiPreferences.userId, ownerId));
     return { book, preference: saved ?? defaultAnalysisPreference, facts: await readVisibleFacts(tx, bookId), links: await readPointMerges(tx, bookId) };
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
-  const mode = importMode();
-  const plan: MergePlan = { version: 1, ...book, bookId, provider: mode, suggestions: [] };
+  const throughChapter = facts.reduce((last, f) => Math.max(last, availableFrom(f)), 0);
+  const plan: MergePlan = { version: 1, ...book, ownerId, bookId, throughChapter, provider: mode, suggestions: [] };
   const ids = mergedEntityIds(facts, links);
   const proposal = directory(facts);
   const seen = new Set<string>();
   let send: Awaited<ReturnType<typeof liveAnalysisProvider>> | undefined;
   let batchNumber = 0;
   for (const batch of mergeBatches(facts)) {
+    signal?.throwIfAborted();
     batchNumber++;
     let response;
     if (mode === "mock") response = mockPointMerges(batch);
     else {
-      send ??= await liveAnalysisProvider(book.ownerId, mode, preference);
+      send ??= await liveAnalysisProvider(ownerId, mode, preference, signal);
       response = await send(mergePrompt(batch), 16000, `point-merge-${bookId}`, batchNumber);
     }
     for (const pair of validatePairs(batch, response)) {
@@ -74,24 +77,31 @@ export async function suggestPointMerges(email: string, bookId: string): Promise
   return plan;
 }
 
-export async function applyPointMerges(email: string, bookId: string, plan: MergePlan, selected: number[]) {
-  return db.transaction(async tx => {
-    const book = await ownedBook(tx, email, bookId);
-    if (plan?.version !== 1 || plan.bookId !== bookId || plan.ownerId !== book.ownerId || !Array.isArray(plan.suggestions))
-      throw new Error("This plan does not belong to the selected book and owner.");
-    if (!selected.length || selected.some(n => !Number.isSafeInteger(n) || n < 1 || n > plan.suggestions.length))
-      throw new Error("Select one or more valid suggestion numbers.");
-    const proposal = directory(await readVisibleFacts(tx, bookId));
-    const values = [...new Set(selected)].map(n => {
-      const match = plan.suggestions[n - 1];
-      const current = proposal(match?.first?.fact?.id, match?.second?.fact?.id, match?.reason);
-      if (!isDeepStrictEqual(match, { number: n, ...current })) throw new Error(`Suggestion ${n} has changed. Generate a fresh plan.`);
-      const [firstFactId, secondFactId] = [current.first.fact.id, current.second.fact.id].sort();
-      return { bookId, firstFactId, secondFactId };
-    });
-    // Concurrent overlapping reviews acquire unique-index entries in the same order.
-    values.sort((a, b) => a.firstFactId.localeCompare(b.firstFactId) || a.secondFactId.localeCompare(b.secondFactId));
-    const inserted = await tx.insert(s.pointMerges).values(values).onConflictDoNothing().returning();
-    return inserted.length;
+export function applyPointMerges(ownerId: string, bookId: string, plan: MergePlan, selected: number[]) {
+  return db.transaction(tx => applyReviewedPoints(tx, ownerId, bookId, plan, selected));
+}
+
+export async function applyReviewedPoints(tx: KnowledgeReader, ownerId: string, bookId: string, plan: MergePlan, selected: number[]) {
+  await requireMergeBook(tx, ownerId, bookId);
+  if (plan?.version !== 1 || plan.bookId !== bookId || plan.ownerId !== ownerId || !Array.isArray(plan.suggestions))
+    throw new Error("This plan does not belong to the selected book and owner.");
+  if (!selected.length || selected.some(n => !Number.isSafeInteger(n) || n < 1 || n > plan.suggestions.length))
+    throw new Error("Select one or more valid suggestion numbers.");
+  const proposal = directory(await readVisibleFacts(tx, bookId));
+  const values = [...new Set(selected)].map(n => {
+    const match = plan.suggestions[n - 1];
+    const current = proposal(match?.first?.fact?.id, match?.second?.fact?.id, match?.reason);
+    if (!isDeepStrictEqual(match, { number: n, ...current })) throw new HTTPException(409, { message: `Suggestion ${n} has changed. Analyze the book again.` });
+    const [firstFactId, secondFactId] = [current.first.fact.id, current.second.fact.id].sort();
+    return { bookId, firstFactId, secondFactId };
   });
+  // Concurrent overlapping reviews acquire unique-index entries in the same order.
+  values.sort((a, b) => a.firstFactId.localeCompare(b.firstFactId) || a.secondFactId.localeCompare(b.secondFactId));
+  let applied = 0;
+  for (let start = 0; start < values.length; start += 1000) {
+    const inserted = await tx.insert(s.pointMerges).values(values.slice(start, start + 1000))
+      .onConflictDoNothing().returning({ fact: s.pointMerges.firstFactId });
+    applied += inserted.length;
+  }
+  return applied;
 }

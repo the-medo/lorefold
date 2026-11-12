@@ -71,6 +71,13 @@
       "when": 1794493967974,
       "tag": "0009_reviewed_point_merges",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794495196067,
+      "tag": "0010_book_point_merge_scans",
+      "breakpoints": true
     }
   ]
 }

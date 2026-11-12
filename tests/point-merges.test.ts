@@ -14,6 +14,8 @@ import { universeWorkspace } from "../backend/universes.js";
 import { readVisibleFacts } from "../backend/knowledge.js";
 import { applyPointMerges, suggestPointMerges } from "../backend/point-merges.js";
 import { mergeBatches, validatePairs, mockPointMerges } from "../backend/point-merge-analysis.js";
+import { getMergeReview, mergeFromScan, queueMergeScan } from "../backend/point-merge-scans.js";
+import { runNextImport } from "../backend/imports/worker.js";
 import { seedMapBook } from "./universe-map-fixture.js";
 
 if (!process.env.LOREFOLD_WORKTREE_ID) throw new Error("Use the worktree launcher.");
@@ -84,11 +86,48 @@ test("configured gateway receives book-local points, names, facts and evidence",
     const text = JSON.stringify({ pairs: [{ firstFactId: "f3", secondFactId: "captain-name", reason: "The captain identifies himself as the gardener." }] });
     return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }] });
   });
-  const plan = await suggestPointMerges(email, bookId);
+  const plan = await suggestPointMerges(ownerId, bookId);
   assert.equal(sent, 1);
   assert.equal(plan.provider, "gateway");
   assert.equal(plan.suggestions[0].fromChapter, 2);
   assert.equal(plan.suggestions[0].second.fact.evidence.quote, "The traveler called himself Captain Orin, the gardener.");
+});
+
+test("a saved whole-book scan can be applied from an earlier chapter without exposing later evidence", async t => {
+  t.mock.property(process, "env", { ...process.env, LOREFOLD_AI_MODE: "mock" });
+  const client = await pool.connect();
+  try {
+    await client.query("select pg_advisory_lock(1280266821, 1)");
+    await Promise.all([queueMergeScan(ownerId, bookId, null), queueMergeScan(ownerId, bookId, null)]);
+    const queued = (await getMergeReview(ownerId, bookId)).scan!;
+    assert.equal(queued.status, "queued");
+    // Recover a lost worker without automatically spending allowance again.
+    await db.update(s.pointMergeScans).set({ status: "running" }).where(eq(s.pointMergeScans.bookId, bookId));
+    const work = () => runNextImport({ connection: client, bookIds: [bookId] });
+    await work();
+    assert.equal((await getMergeReview(ownerId, bookId)).scan!.status, "failed");
+    await queueMergeScan(ownerId, bookId, queued.id);
+    await work();
+    const review = (await getMergeReview(ownerId, bookId, 2)).scan!;
+    assert.equal(review.suggestions.length, 1);
+    assert.equal(review.suggestions[0].reason, undefined);
+    assert.equal(review.later, 1);
+    assert.doesNotMatch(JSON.stringify(review), /Orin Vale|signature/);
+    await assert.rejects(mergeFromScan(ownerId, bookId, queued.id, [], true, 1), /changed/);
+    await assert.rejects(mergeFromScan(ownerId, bookId, review.id, [], false, 1), /Select/);
+    const hidden = (await getMergeReview(ownerId, bookId, 1)).scan!;
+    assert.equal(hidden.suggestions.length, 0);
+    assert.equal(hidden.later, 2);
+    const before = (await getWorkspace(ownerId, bookId, 1, "story"))!.graph;
+    const applyAll = () => mergeFromScan(ownerId, bookId, review.id, [], true, 1);
+    assert.deepEqual(await Promise.all([applyAll(), applyAll()]), [2, 2]);
+    assert.deepEqual((await getWorkspace(ownerId, bookId, 1, "story"))!.graph, before);
+    assert.equal((await getMergeReview(ownerId, bookId)).scan!.status, "applied");
+  } finally {
+    await client.query("select pg_advisory_unlock(1280266821, 1)");
+    client.release();
+    await db.delete(s.pointMerges).where(eq(s.pointMerges.bookId, bookId));
+  }
 });
 
 test("CLI suggests, reviews, and applies same-book duplicates across chapter and universe views", async () => {
@@ -107,10 +146,10 @@ test("CLI suggests, reviews, and applies same-book duplicates across chapter and
     assert.doesNotMatch(JSON.stringify(early), /Orin|Unvalidated/);
 
     await assert.rejects(applyPointMerges("missing@example.test", bookId, plan, [1]), /owner/);
-    await assert.rejects(applyPointMerges(email, otherBook, plan, [1]), /selected book/);
+    await assert.rejects(applyPointMerges(ownerId, otherBook, plan, [1]), /selected book/);
     const stale = structuredClone(plan);
     stale.suggestions[1].second.fact.evidence.quote = "Replaced evidence";
-    await assert.rejects(applyPointMerges(email, bookId, stale, [1, 2]), /changed/);
+    await assert.rejects(applyPointMerges(ownerId, bookId, stale, [1, 2]), /changed/);
     assert.equal((await graph(3)).entities.length, 4);
 
     const earlier = plan.suggestions.find(m => m.fromChapter === 2)!.number;

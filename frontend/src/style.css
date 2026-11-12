@@ -1911,3 +1911,19 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
 .import-progress.compact { padding: .75rem; font-size: .8rem; }
 .recap-evidence { margin: .75rem 0; }
 .recap-evidence blockquote { margin: .75rem 0; padding-left: 1rem; border-left: 2px solid var(--border); }
+
+.merge-page { max-width: 820px; margin: 0 auto; }
+.merge-page .page-intro { margin: 28px 0 20px; }
+.merge-review { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: clamp(18px, 4vw, 32px); overflow-wrap: anywhere; }
+.merge-review h2 { font-family: var(--font-heading); font-weight: 500; }
+.merge-review p { line-height: 1.6; }
+.merge-review small, .merge-pair p { color: var(--muted); }
+.merge-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 8px; }
+.merge-pair { padding: 18px 0 0; margin-top: 16px; border-top: 1px solid var(--border); }
+.merge-pair label, .merge-success { display: flex; align-items: baseline; gap: 10px; }
+.merge-pair input { accent-color: var(--accent); }
+.merge-pair p, .merge-pair details { margin: 8px 0 0 23px; }
+.merge-pair summary { cursor: pointer; color: var(--accent); }
+.merge-pair blockquote { margin: 12px 0; border-left: 2px solid var(--border); padding-left: 12px; line-height: 1.5; }
+.merge-pair blockquote small { display: block; margin-bottom: 4px; }
+.merge-success { color: var(--success); margin-bottom: 16px; align-items: center; }

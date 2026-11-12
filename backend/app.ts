@@ -9,6 +9,7 @@ import { aiSettings, chatgptConnections, saveAnalysisPreference } from "./ai.js"
 import { VMChatGPTConnections } from "./chatgpt/vm-connections.js";
 import { ownerAllowed } from "./personal-installation.js";
 import { assignTheme, deleteTheme, saveTheme, themeLibrary } from "./themes.js";
+import { getMergeReview, mergeFromScan, queueMergeScan } from "./point-merge-scans.js";
 import { controlImport } from "./imports/jobs.js";
 import { attachBook, createUniverse, downloadResource, listUniverses, MAX_UPLOAD_SIZE, requireUniverse, textField, universeWorkspace, uploadResource } from "./universes.js";
 
@@ -126,21 +127,37 @@ app.post("/api/books/:id/import", async c => {
   await controlImport(c.get("userId"), c.req.param("id"), body.action as "pause" | "resume");
   return c.json({ saved: true });
 });
+function requestedChapter(rawChapter: string | undefined) {
+  if (rawChapter === undefined) return undefined;
+  if (!/^\d+$/.test(rawChapter) || !Number.isSafeInteger(Number(rawChapter)))
+    throw new HTTPException(400, { message: "Chapter must be a nonnegative integer." });
+  return Number(rawChapter);
+}
+app.get("/api/books/:id/point-merges", async c =>
+  c.json(await getMergeReview(c.get("userId"), c.req.param("id"), requestedChapter(c.req.query("chapter")))));
+app.post("/api/books/:id/point-merges/analyze", async c => {
+  const body = await jsonObject(c.req.raw);
+  if (Object.keys(body).length !== 1 || (body.previousId !== null && typeof body.previousId !== "string"))
+    throw new HTTPException(400, { message: "Choose a valid analysis to start." });
+  await queueMergeScan(c.get("userId"), c.req.param("id"), body.previousId);
+  return c.json({ queued: true }, 202);
+});
+app.post("/api/books/:id/point-merges/apply", async c => {
+  const { id, skip, includeLater, ...extra } = await jsonObject(c.req.raw);
+  if (typeof id !== "string" || typeof includeLater !== "boolean" || Object.keys(extra).length ||
+      !Array.isArray(skip) || skip.some(n => !Number.isSafeInteger(n) || n < 1))
+    throw new HTTPException(400, { message: "Choose valid suggestions from the analysis." });
+  return c.json({ applied: await mergeFromScan(c.get("userId"), c.req.param("id"), id, skip, includeLater, requestedChapter(c.req.query("chapter"))) });
+});
 app.get("/api/books/:id/workspace", async (c) => {
-  const rawChapter = c.req.query("chapter");
-  if (
-    rawChapter !== undefined &&
-    (!/^\d+$/.test(rawChapter) || !Number.isSafeInteger(Number(rawChapter)))
-  ) {
-    return c.json({ error: "Chapter must be a nonnegative integer." }, 400);
-  }
+  const chapter = requestedChapter(c.req.query("chapter"));
   const mode = c.req.query("mode") ?? "story";
   if (mode !== "chapter" && mode !== "story")
     return c.json({ error: "Unknown graph mode." }, 400);
   const workspace = await getWorkspace(
     c.get("userId"),
     c.req.param("id"),
-    rawChapter === undefined ? undefined : Number(rawChapter),
+    chapter,
     mode,
   );
   return workspace

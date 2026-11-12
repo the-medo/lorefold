@@ -110,6 +110,20 @@ external fictional knowledge as source evidence.
 
 ## Review duplicate points
 
+Open the book and choose **Merge points → Analyze all points**. The worker scans
+the book's validated map points using your configured AI provider. You can leave
+the page and return to the saved results. Review the suggested pairs and expand
+**Supporting passages** to inspect the evidence. All suggestions start selected.
+Deselect any you want to keep separate, then choose **Apply merges**.
+
+The review follows the chapter you are browsing and your saved reading progress.
+Later matches appear as one optional group. You can apply them now and their
+names and connections will appear on the map as you reach their reveal chapters.
+A full-book AI explanation appears when you've reached all the evidence used in
+the scan. The scan and merge leave your reading progress intact.
+
+### Command line
+
 Run the point merge script against an existing book when its map shows the same
 person, place, faction, or object more than once. This is an operator command. Its
 private JSON report can contain names and passages from **all analyzed chapters**,

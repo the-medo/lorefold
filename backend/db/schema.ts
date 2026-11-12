@@ -380,3 +380,16 @@ export const pointMerges = pgTable("point_merges", {
   foreignKey({ columns: [t.bookId, t.secondFactId], foreignColumns: [facts.bookId, facts.id] }).onDelete("cascade"),
   check("distinct_merge_facts", sql`${t.firstFactId} <> ${t.secondFactId}`),
 ]);
+
+// The complete report stays private. Reader responses are projected at their current cutoff.
+export const pointMergeScans = pgTable("point_merge_scans", {
+  bookId: text("book_id").primaryKey().references(() => books.id, { onDelete: "cascade" }),
+  id: text().notNull(),
+  status: text().$type<import("../../shared/point-merges.js").ScanStatus>().notNull(),
+  mode: text().$type<import("../../shared/imports.js").ImportMode>().notNull(),
+  preference: jsonb().$type<AnalysisPreference>().notNull(),
+  plan: jsonb().$type<import("../point-merges.js").MergePlan>(),
+  applied: integer().notNull().default(0),
+  error: text(),
+  queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+});

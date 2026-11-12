@@ -1,3 +1,4 @@
+import { runNextMergeScan } from "../point-merge-scans.js";
 import type { PoolClient } from "pg";
 import { randomUUID, createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
@@ -177,7 +178,8 @@ export async function runNextImport(options: WorkerOptions = {}): Promise<boolea
       or(isNull(s.importJobs.nextRetryAt), lte(s.importJobs.nextRetryAt, now())),
       options.bookIds ? inArray(s.importJobs.bookId, options.bookIds) : undefined))
       .orderBy(asc(s.importJobs.createdAt)).limit(1);
-    if (!job || signal.aborted) return false;
+    if (signal.aborted) return false;
+    if (!job) return await runNextMergeScan(signal, options.bookIds);
     const token = randomUUID();
     await db.update(s.importJobs).set({ runToken: token, status: job.totalParts ? "analyzing" : "extracting",
       nextRetryAt: null, updatedAt: new Date() }).where(eq(s.importJobs.bookId, job.bookId));

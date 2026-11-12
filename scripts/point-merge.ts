@@ -16,17 +16,21 @@ async function main() {
   if (!owner || !book || !plan || !["suggest", "apply"].includes(command) ||
       (command === "suggest" ? accept !== undefined : !accept || !/^[1-9]\d*(,[1-9]\d*)*$/.test(accept))) throw new Error(usage);
 
-  const { pool } = await import("../backend/db/client.js");
+  const { pool, db } = await import("../backend/db/client.js");
   try {
     const { applyPointMerges, suggestPointMerges } = await import("../backend/point-merges.js");
+    const { user } = await import("../backend/db/schema.js");
+    const { eq } = await import("drizzle-orm");
+    const [account] = await db.select({ id: user.id }).from(user).where(eq(user.email, owner.trim().toLowerCase()));
+    if (!account) throw new Error("Book not found for this owner.");
     if (command === "apply") {
-      const count = await applyPointMerges(owner, book, JSON.parse(await readFile(plan, "utf8")), accept!.split(",").map(Number));
+      const count = await applyPointMerges(account.id, book, JSON.parse(await readFile(plan, "utf8")), accept!.split(",").map(Number));
       console.log(`Applied ${count} new point merge(s).`);
     } else {
       const file = await open(plan, "wx", 0o600);
       let result;
       try {
-        result = await suggestPointMerges(owner, book);
+        result = await suggestPointMerges(account.id, book);
         await file.writeFile(JSON.stringify(result, null, 2) + "\n");
       } catch (error) {
         await unlink(plan);

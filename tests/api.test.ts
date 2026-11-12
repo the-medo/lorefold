@@ -255,6 +255,20 @@ test("invalid progress, malformed input, and cross-origin mutations are rejected
   assert.equal((await workspace()).book.completedChapter, 1);
 });
 
+test("point merge analysis and application are scoped to the signed-in book owner", async () => {
+  const route = (id: string) => `/books/${id}/point-merges`;
+  const analyze = { method: "POST", body: JSON.stringify({ previousId: null }) };
+  const apply = { method: "POST", body: JSON.stringify({ id: "untrusted", includeLater: true, skip: [] }) };
+  assert.equal((await request(route(bookId), {}, false)).status, 401);
+  assert.equal((await request(route(otherBookId))).status, 404);
+  assert.equal((await request(route(otherBookId) + "/analyze", analyze)).status, 404);
+  assert.equal((await request(route(otherBookId) + "/apply", apply)).status, 404);
+  assert.equal((await request(route(bookId) + "/analyze", { ...analyze, headers: { origin: "https://example.test" } })).status, 403);
+  assert.equal((await request(route(bookId) + "/apply", apply)).status, 409);
+  assert.equal((await request(route(bookId) + "/apply", { method: "POST", body: JSON.stringify({ plan: { suggestions: [] } }) })).status, 400);
+  assert.equal((await request(route(bookId) + "?chapter=-1")).status, 400);
+});
+
 test("signing out invalidates the session", async () => {
   assert.equal(
     (await request("/auth/sign-out", { method: "POST", body: "{}" })).status,

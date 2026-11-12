@@ -169,8 +169,9 @@ A separate identity pass links supported shared characters across books in the s
 universe. Both endpoints must be within their respective reading cutoffs. Excluded
 sources contribute neither facts nor identity bridges; matching names alone do not
 establish a shared identity. For duplicate points within an existing book,
-the [point merge script](docs/book-imports.md#review-duplicate-points) suggests
-evidence-backed pairs and applies the ones you select.
+open **Merge points** on the book page. Analyze all points, review the suggested
+pairs and their source passages, then apply the merges you want. See the
+[point merge workflow](docs/book-imports.md#review-duplicate-points).
 
 The sample content is original synthetic fiction seeded transactionally in PostgreSQL.
 The sample requires no external services. Processing progress is
