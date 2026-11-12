@@ -241,7 +241,7 @@ universe re-fetches its snapshot and clears stale knowledge while loading.
 Three.js renders a perspective scene with OrbitControls for mouse, touch, and
 keyboard navigation. A deterministic spring layout uses only visible entities and
 relationships from the authorized response. Search and type filters do not fetch
-hidden knowledge. Selecting a sphere, projected label, or entity-list item shares
+hidden knowledge. Selecting a circular marker, projected label, or entity-list item shares
 the evidence panel and highlights its immediate connections.
 
 The renderer loads on demand with the Story map tab. It draws only when the camera,

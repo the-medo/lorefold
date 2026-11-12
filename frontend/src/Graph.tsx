@@ -1,20 +1,27 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { Focus, Maximize, Minimize, Minus, Plus, RotateCcw } from "lucide-react";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { ChevronDown, Palette, Focus, Maximize, Minimize, Minus, Plus, RotateCcw } from "lucide-react";
 import type { Entity, Relationship } from "../../shared/contracts.js";
+import { createMarkerTexture, mapStyles, paintMarker, type MapStyle } from "./graph-markers.js";
 import { layoutGraph } from "./graph-layout.js";
 
 import { useTheme } from "./theme.js";
 
-type MapActions = { zoom: (factor: number) => void; reset: () => void; select: (id: string | null, focus?: boolean) => void; recolor: () => void };
-type NodeView = { entity: Entity; mesh: THREE.Mesh<THREE.SphereGeometry, THREE.MeshStandardMaterial>; label: HTMLButtonElement; radius: number };
-type EdgeView = { relationship: Relationship; line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>; arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>; label: HTMLSpanElement; position: THREE.Vector3 };
+type MapActions = { zoom: (factor: number) => void; reset: () => void; select: (id: string | null, focus?: boolean) => void; restyle: () => void };
+type NodeView = { entity: Entity; mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>; label: HTMLButtonElement; radius: number };
+type EdgeView = { relationship: Relationship; line: Line2; arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>; label: HTMLSpanElement; position: THREE.Vector3 };
 
 export function StoryGraph({ entities, relationships, selectedId = null, onSelect }: {
   entities: Entity[]; relationships: Relationship[]; selectedId?: string | null; onSelect: (id: string) => void;
 }) {
   const theme = useTheme();
+  const [style, setStyle] = useState<MapStyle>("bookplate");
+  const currentStyle = useRef(style);
+  currentStyle.current = style;
   const palette = useRef(theme.colors);
   palette.current = theme.colors;
   const host = useRef<HTMLDivElement>(null);
@@ -63,37 +70,42 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     controls.enableDamping = !reducedMotion.matches;
     controls.dampingFactor = 0.12;
     controls.minDistance = 35;
-    controls.maxDistance = 1400;
     controls.rotateSpeed = 0.65;
     controls.panSpeed = 0.7;
     controls.zoomSpeed = 0.8;
     controls.touches.ONE = THREE.TOUCH.ROTATE;
     controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
-    scene.add(new THREE.AmbientLight(0xffffff, 1.7));
-    const light = new THREE.DirectionalLight(0xffffff, 2.4);
-    light.position.set(-100, 180, 250);
-    scene.add(light);
     const positions = layoutGraph(entities, relationships);
-    const geometry = new THREE.SphereGeometry(1, 24, 16);
+    const geometry = new THREE.CircleGeometry(1, 64);
+    const textures = new Map<Entity["kind"], THREE.CanvasTexture>();
     const nodes = new Map<string, NodeView>();
     const meshes: THREE.Object3D[] = [];
     const edgeViews: EdgeView[] = [];
     let width = 1, height = 1, frame = 0, disposed = false, lost = false;
-    let active: string | null = null;
+    let active = selected.current;
     let tween: { start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | null = null;
     let hovered: string | null = null;
     const neighbors = new Set<string>();
     const ringMaterial = new THREE.MeshBasicMaterial({ color: palette.current.mapSelection, transparent: true, opacity: 0.8, depthTest: false });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), ringMaterial);
     ring.visible = false;
+    ring.renderOrder = 3;
     scene.add(ring);
 
+    const initialAspect = element.clientWidth / Math.max(1, element.clientHeight);
+    const horizontalScale = THREE.MathUtils.clamp(initialAspect, 0.8, 2.5);
     for (const entity of entities) {
-      const radius = entity.kind === "character" ? 7.5 : 6;
-      const material = new THREE.MeshStandardMaterial({ color: palette.current[entity.kind], roughness: 0.38, metalness: 0.08, transparent: true });
+      const radius = entity.kind === "character" ? 14 : 12.5;
+      let texture = textures.get(entity.kind);
+      if (!texture) {
+        texture = createMarkerTexture();
+        textures.set(entity.kind, texture);
+      }
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
       const mesh = new THREE.Mesh(geometry, material);
+      mesh.renderOrder = 2;
       const p = positions.get(entity.id)!;
-      mesh.position.set(p.x, p.y, p.z);
+      mesh.position.set(p.x * horizontalScale, p.y, p.z);
       mesh.scale.setScalar(radius);
       mesh.userData.entityId = entity.id;
       scene.add(mesh);
@@ -121,8 +133,12 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       side.normalize();
       const midpoint = start.clone().lerp(end, 0.5).addScaledVector(side, 10 + lane * 10);
       const curve = new THREE.QuadraticBezierCurve3(start.clone(), midpoint, end.clone());
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(32)), new THREE.LineBasicMaterial({ color: palette.current.mapEdge, transparent: true, opacity: 0.45 }));
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.5, 4, 8), new THREE.MeshBasicMaterial({ color: palette.current.mapEdge, transparent: true, opacity: 0.65 }));
+      const line = new Line2(
+        new LineGeometry().setPositions(curve.getPoints(32).flatMap(point => point.toArray())),
+        new LineMaterial({ transparent: true, depthWrite: false, dashSize: 2, gapSize: 3 }),
+      );
+      line.computeLineDistances();
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.9, 4.8, 12), new THREE.MeshBasicMaterial({ color: palette.current.mapEdge, transparent: true, depthWrite: false, opacity: 0.65 }));
       const t = Math.max(0.5, 1 - (target.radius + 4) / Math.max(start.distanceTo(end), 1));
       arrow.position.copy(curve.getPoint(t));
       arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangent(t).normalize());
@@ -134,12 +150,29 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       labelLayer.append(label);
       edgeViews.push({ relationship, line, arrow, label, position: curve.getPoint(0.5) });
     }
-    const radius = Math.max(50, ...[...nodes.values()].map((node) => node.mesh.position.length() + node.radius));
-    const initialDirection = new THREE.Vector3(0.25, 0.18, 1).normalize();
+    const initialDirection = new THREE.Vector3(0, 0, 1);
+    const bounds = new THREE.Box3().setFromPoints([...nodes.values()].map(node => node.mesh.position));
+    const center = bounds.getCenter(new THREE.Vector3());
+    const homePosition = new THREE.Vector3();
+    let homeDistance = 0;
     function fitDistance() {
-      const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
-      const effectiveFov = Math.min(halfFov, Math.atan(Math.tan(halfFov) * camera.aspect));
-      return radius / Math.sin(effectiveFov) * 1.3;
+      const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      // Leave screen-space room for the names and controls even in portrait.
+      const halfWidth = Math.max(width * 0.25, width / 2 - 72);
+      const verticalMargin = width < 600 ? 84 : 65;
+      const halfHeight = Math.max(height * 0.23, height / 2 - verticalMargin);
+      const focalLength = height / (2 * tangent);
+      let distance = 0;
+      for (const { mesh, radius } of nodes.values()) {
+        const { x, y, z } = mesh.position;
+        const scale = Math.max(
+          (Math.abs(x - center.x) + radius) / halfWidth,
+          (Math.abs(y - center.y) + radius) / halfHeight,
+          radius / 32,
+        );
+        distance = Math.max(distance, z - center.z + focalLength * scale);
+      }
+      return distance;
     }
     function invalidate() {
       if (!disposed && !lost && !document.hidden && !frame) frame = requestAnimationFrame(render);
@@ -150,12 +183,12 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
         controls.target.copy(target);
         controls.update();
       } else {
-        tween = { start: performance.now(), from: camera.position.clone(), to: position, fromTarget: controls.target.clone(), toTarget: target };
+        tween = { start: performance.now(), from: camera.position.clone(), to: position.clone(), fromTarget: controls.target.clone(), toTarget: target.clone() };
       }
       invalidate();
     }
     function reset() {
-      moveTo(initialDirection.clone().multiplyScalar(fitDistance()), new THREE.Vector3());
+      moveTo(homePosition, center);
     }
     function highlight(id: string | null, focus = false) {
       active = id && nodes.has(id) ? id : null;
@@ -175,12 +208,22 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
         node.label.classList.toggle("is-selected", nodeId === active);
         node.label.setAttribute("aria-pressed", String(nodeId === active));
       }
+      const style = currentStyle.current;
+      const colors = palette.current;
       for (const edge of edgeViews) {
         const connected = edge.relationship.source === active || edge.relationship.target === active;
-        edge.line.material.opacity = active ? connected ? 0.9 : 0.08 : 0.4;
-        edge.line.material.color.set(connected ? palette.current.mapSelection : palette.current.mapEdge);
-        edge.arrow.material.color.copy(edge.line.material.color);
-        edge.arrow.material.opacity = active ? connected ? 1 : 0.1 : 0.65;
+        const line = edge.line.material;
+        line.color.set(connected ? colors.mapSelection : colors.mapEdge);
+        if (style === "observatory") line.color.lerp(new THREE.Color("#c5eaff"), 0.25);
+        if (style === "wayfinder" && !connected) {
+          const source = nodes.get(edge.relationship.source)!;
+          line.color.lerp(new THREE.Color(colors[source.entity.kind]), 0.7);
+        }
+        line.dashed = style === "observatory";
+        line.linewidth = style === "wayfinder" ? 3.4 : style === "bookplate" ? 1.5 : 1.2;
+        line.opacity = active && !connected ? 0.12 : 1;
+        edge.arrow.material.color.copy(line.color);
+        edge.arrow.material.opacity = active && !connected ? 0.12 : 1;
         edge.label.dataset.connected = String(connected);
       }
       const node = active ? nodes.get(active) : undefined;
@@ -190,8 +233,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
         ring.scale.setScalar(node.radius + 2.6);
         if (focus) {
           const direction = camera.position.clone().sub(controls.target).normalize();
-          // Keep the selected node's neighborhood in view rather than diving into its sphere.
-          moveTo(node.mesh.position.clone().addScaledVector(direction, fitDistance() * 0.82), node.mesh.position.clone());
+          // Keep the selected node's neighborhood in view rather than diving into the marker.
+          moveTo(node.mesh.position.clone().addScaledVector(direction, homeDistance * 0.82), node.mesh.position.clone());
         }
       }
       invalidate();
@@ -222,6 +265,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       const moving = controls.update();
       camera.updateMatrixWorld();
       ring.quaternion.copy(camera.quaternion);
+      for (const { mesh } of nodes.values()) mesh.quaternion.copy(camera.quaternion);
       renderer.render(scene, camera);
       for (const node of nodes.values()) {
         if (screenPosition(node.mesh.position, node.label)) {
@@ -237,17 +281,24 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       if (moving || tween) invalidate();
     }
     const resize = () => {
+      const atHome = !homeDistance || (!tween && camera.position.distanceToSquared(homePosition) < 1e-6 && controls.target.distanceToSquared(center) < 1e-6);
       width = Math.max(1, element.clientWidth);
       height = Math.max(1, element.clientHeight);
+      homeDistance = fitDistance();
+      homePosition.copy(center).addScaledVector(initialDirection, homeDistance);
+      controls.maxDistance = Math.max(1400, homeDistance * 2);
+      camera.far = Math.max(3000, controls.maxDistance + bounds.min.distanceTo(bounds.max));
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      if (atHome) {
+        controls.target.copy(center);
+        camera.position.copy(homePosition);
+        controls.update();
+      }
       invalidate();
     };
     resize();
-    camera.position.copy(initialDirection).multiplyScalar(fitDistance());
-    camera.lookAt(0, 0, 0);
-    controls.update();
     controls.addEventListener("change", invalidate);
     const interrupt = () => { tween = null; };
     controls.addEventListener("start", interrupt);
@@ -316,13 +367,13 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     document.addEventListener("visibilitychange", invalidate);
     reducedMotion.addEventListener("change", motionChanged);
     labelLayer.style.visibility = "visible";
-    actions.current = { zoom, reset, select: highlight, recolor: () => {
-      for (const node of nodes.values()) node.mesh.material.color.set(palette.current[node.entity.kind]);
+    const restyle = () => {
+      for (const [kind, texture] of textures) paintMarker(texture, currentStyle.current, kind, palette.current);
       ringMaterial.color.set(palette.current.mapSelection);
       highlight(active);
-    } };
-    highlight(selected.current);
-    invalidate();
+    };
+    actions.current = { zoom, reset, select: highlight, restyle };
+    restyle();
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
@@ -340,6 +391,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       canvas.removeEventListener("pointercancel", pointerCancel);
       canvas.removeEventListener("keydown", keyDown);
       geometry.dispose();
+      for (const texture of textures.values()) texture.dispose();
       for (const node of nodes.values()) node.mesh.material.dispose();
       for (const edge of edgeViews) { edge.line.geometry.dispose(); edge.line.material.dispose(); edge.arrow.geometry.dispose(); edge.arrow.material.dispose(); }
       ring.geometry.dispose(); ringMaterial.dispose();
@@ -350,7 +402,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
   }, [entities, relationships, retry, hintId]);
 
   // Recolor existing materials without resetting orbit, selection, or GPU resources.
-  useLayoutEffect(() => { actions.current?.recolor(); }, [theme.colors]);
+  useLayoutEffect(() => { actions.current?.restyle(); }, [theme.colors, style]);
 
   useLayoutEffect(() => {
     actions.current?.select(selectedId, !!selectedId);
@@ -365,10 +417,16 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     } catch { setError("Fullscreen is unavailable in this browser."); }
   }
   const selectedEntity = entities.find((entity) => entity.id === selectedId);
-  return <div className="graph-wrap graph-three" ref={wrap} role="region" aria-label="Interactive 3D story map">
+  return <div className="graph-wrap graph-three" data-map-style={style} ref={wrap} role="region" aria-label="Interactive 3D story map">
     <div className="graph-canvas" ref={host} />
     <div className="map-labels" ref={labels} />
-    <span className="map-dimension">3D STORY MAP</span>
+    {!fallback && !!entities.length && <label className="map-style-picker">
+      <Palette size={14} aria-hidden="true" />
+      <select aria-label="Map style" value={style} onChange={(event) => setStyle(event.target.value as MapStyle)}>
+        {Object.entries(mapStyles).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+      </select>
+      <ChevronDown size={12} aria-hidden="true" />
+    </label>}
     {expanded && selectedEntity && <button className="map-selection secondary" onClick={fullscreen}>View {selectedEntity.label} details</button>}
     {fallback && entities.length > 0 && <div className="graph-fallback" role="status"><p>The 3D map needs WebGL. Explore the same people, places, and connections in the list below.</p><button className="secondary" onClick={() => setRetry((value) => value + 1)}>Retry 3D map</button></div>}
     {!entities.length && <p className="graph-fallback">No matches. Try another search or filter.</p>}
