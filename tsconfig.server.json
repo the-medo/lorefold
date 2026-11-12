@@ -6,6 +6,6 @@
     "rootDir": ".",
     "sourceMap": true
   },
-  "include": ["backend", "shared", "scripts/migrate.ts", "scripts/create-user.ts"],
+  "include": ["backend", "shared", "scripts/migrate.ts", "scripts/create-user.ts", "scripts/point-merge.ts"],
   "exclude": ["frontend", "tests"]
 }

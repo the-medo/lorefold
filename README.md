@@ -168,7 +168,9 @@ unfinished chapters contribute no knowledge. Reference documents remain stored-o
 A separate identity pass links supported shared characters across books in the same
 universe. Both endpoints must be within their respective reading cutoffs. Excluded
 sources contribute neither facts nor identity bridges; matching names alone do not
-establish a shared identity.
+establish a shared identity. For duplicate points within an existing book,
+the [point merge script](docs/book-imports.md#review-duplicate-points) suggests
+evidence-backed pairs and applies the ones you select.
 
 The sample content is original synthetic fiction seeded transactionally in PostgreSQL.
 The sample requires no external services. Processing progress is

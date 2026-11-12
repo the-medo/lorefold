@@ -108,6 +108,50 @@ and identity bridges. Every displayed fact retains its book/chapter attribution.
 No hidden canonical name is exposed by a shared node. Model prompts never use
 external fictional knowledge as source evidence.
 
+## Review duplicate points
+
+Run the point merge script against an existing book when its map shows the same
+person, place, faction, or object more than once. This is an operator command. Its
+private JSON report can contain names and passages from **all analyzed chapters**,
+including chapters beyond the owner's saved reading progress.
+
+Use the account email and the book ID from its `/books/BOOK_ID` URL. Choose a
+new file under the worktree's ignored `.lorefold/` directory for each scan.
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev run -- npm run point-merge -- suggest \
+  --owner you@example.com --book BOOK_ID --plan .lorefold/merge-plan.json
+```
+
+Open the report and review the two points, the quoted evidence from each, the
+reason and the reveal chapter. For example, if a surname and a full name could
+belong to relatives, accept the pair only if the passages establish one person.
+The following command applies suggestions 1 and 3 from that report.
+
+```bash
+scripts/worktree-dev/lorefold-worktree-dev run -- npm run point-merge -- apply \
+  --owner you@example.com --book BOOK_ID --plan .lorefold/merge-plan.json --accept 1,3
+```
+
+The scan uses the configured import provider and the owner's current model and effort.
+The default mock suggests overlapping names deterministically. For an AI review,
+use the ChatGPT plan or gateway configuration above. Larger books can use multiple
+requests. Every pair of named points of the same kind is eligible, including points
+in different batches. The prompt samples up to six passages each for labels, aliases
+and descriptions per point. The scan runs separately from import. A scan can miss
+a duplicate when the sampled passages omit the identity reveal.
+
+Applying the selection rechecks the owner, book, labels and cited facts, then saves
+all selected links in one transaction. Reapplying the same report is safe. The
+reader sees one point once both names and both citations are available. Rewinding
+before the reveal restores the earlier view. Linked points keep their original
+evidence, relationships to other points and chapter appearances. The latest visible
+label becomes the display name, with other visible names available as aliases.
+These links also apply on the universe map and preserve existing cross-book matches.
+
+In a built installation, run `node dist/server/scripts/point-merge.js` with the
+same arguments and a private, writable plan path accessible to both commands.
+
 ## Recovery and validation
 
 The worker uses a PostgreSQL session advisory lock and a per-run fencing token.

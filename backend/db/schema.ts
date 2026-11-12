@@ -367,3 +367,16 @@ export const entityMatches = pgTable("entity_matches", {
   foreignKey({ columns: [t.bookId, t.evidenceId], foreignColumns: [evidence.bookId, evidence.id] }).onDelete("cascade"),
   foreignKey({ columns: [t.otherBookId, t.otherEvidenceId], foreignColumns: [evidence.bookId, evidence.id] }).onDelete("cascade"),
 ]);
+
+// A reviewed same-book identity becomes visible when both supporting facts are visible.
+// Keeping references to the original facts preserves their evidence and chapter history.
+export const pointMerges = pgTable("point_merges", {
+  bookId: text("book_id").notNull(),
+  firstFactId: text("first_fact_id").notNull(),
+  secondFactId: text("second_fact_id").notNull(),
+}, t => [
+  primaryKey({ columns: [t.bookId, t.firstFactId, t.secondFactId] }),
+  foreignKey({ columns: [t.bookId, t.firstFactId], foreignColumns: [facts.bookId, facts.id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.bookId, t.secondFactId], foreignColumns: [facts.bookId, facts.id] }).onDelete("cascade"),
+  check("distinct_merge_facts", sql`${t.firstFactId} <> ${t.secondFactId}`),
+]);

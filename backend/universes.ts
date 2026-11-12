@@ -54,11 +54,13 @@ export async function universeWorkspace(ownerId: string, id: string): Promise<Un
       .where(and(eq(s.resources.universeId, id), eq(s.resources.ownerId, ownerId)))
       .orderBy(asc(s.resources.createdAt), asc(s.resources.id));
     const graph: UniverseWorkspace["graph"] = { entities: [], relationships: [] };
+    const mergedIds = new Map<string, string>();
     for (const book of books) {
       const cutoff = Math.min(book.completedChapter, book.totalChapters);
-      const source = await readGraph(tx, book.id, cutoff, "story");
+      const { graph: source, mergedIds: localMerges } = await readGraph(tx, book.id, cutoff, "story");
       // IDs are local to a book. Never infer a shared identity from an ID or name.
       const scopedId = (localId: string) => JSON.stringify([book.id, localId]);
+      for (const [id, canonical] of localMerges) mergedIds.set(scopedId(id), scopedId(canonical));
       graph.entities.push(...source.entities.map((entity) => ({
         ...entity, id: scopedId(entity.id), bookId: book.id,
         facts: entity.facts.map((fact) => ({ ...fact, evidence: { ...fact.evidence, id: scopedId(fact.evidence.id), sourceTitle: book.title } })),
@@ -72,8 +74,12 @@ export async function universeWorkspace(ownerId: string, id: string): Promise<Un
     const visibleIds = new Set(graph.entities.map(e => e.id));
     const cutoffs = new Map(books.map(b => [b.id, Math.min(b.completedChapter, b.analyzedChapters)]));
     const matches = await tx.select().from(s.entityMatches).where(sql`${s.entityMatches.bookId} in (select id from books where universe_id = ${id} and owner_id = ${ownerId})`);
+    const endpoint = (bookId: string, entityId: string) => {
+      const id = JSON.stringify([bookId, entityId]);
+      return mergedIds.get(id) ?? id;
+    };
     graph.matches = matches.filter(m => m.chapter <= (cutoffs.get(m.bookId) ?? 0) && m.otherChapter <= (cutoffs.get(m.otherBookId) ?? 0))
-      .map(m => ({ source: JSON.stringify([m.bookId, m.entityId]), target: JSON.stringify([m.otherBookId, m.otherEntityId]) }))
+      .map(m => ({ source: endpoint(m.bookId, m.entityId), target: endpoint(m.otherBookId, m.otherEntityId) }))
       .filter(m => visibleIds.has(m.source) && visibleIds.has(m.target));
     return { universe, books, resources, graph };
   }, { isolationLevel: "repeatable read", accessMode: "read only" });
