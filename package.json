@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
+    "point-merge": "tsx scripts/point-merge.ts",
     "db:seed": "tsx scripts/seed.ts",
     "demo:setup": "tsx scripts/demo-setup.ts",
     "benchmark:book": "tsx scripts/book-benchmark.ts",

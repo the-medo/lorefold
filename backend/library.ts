@@ -109,7 +109,7 @@ export async function getWorkspace(
         mode,
         chapters: chapterList,
         chapter: chapter ? { number: chapter.number, title: chapter.title, text: sourceText, recap: chapter.recap, developments: chapter.developments, recapEvidence: chapter.recapEvidence } : null,
-        graph: await readGraph(tx, bookId, cutoff, mode),
+        graph: (await readGraph(tx, bookId, cutoff, mode)).graph,
       };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },

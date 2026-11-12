@@ -1,6 +1,6 @@
 import { accountAuth, personalConnectionConfiguration } from "../chatgpt/connections.js";
 import { planProvider, PLAN_MODELS } from "../../scripts/chatgpt-plan/provider.js";
-import { liveProvider, reservation } from "../../scripts/book-benchmark/provider.js";
+import { liveProvider, reservation, type Prompt } from "../../scripts/book-benchmark/provider.js";
 import type { AnalysisPreference } from "../../shared/ai.js";
 import type { ImportMode } from "../../shared/imports.js";
 import { importPrompt, mockImport, type ImportRequest } from "./analysis.js";
@@ -10,10 +10,9 @@ export function importMode(env = process.env): ImportMode {
   if (!["mock", "chatgpt-plan", "gateway"].includes(mode)) throw new Error("Unknown import provider.");
   return mode as ImportMode;
 }
-export async function importProvider(ownerId: string, mode: ImportMode, preference: AnalysisPreference, signal?: AbortSignal) {
+export async function liveAnalysisProvider(ownerId: string, mode: Exclude<ImportMode, "mock">, preference: AnalysisPreference, signal?: AbortSignal) {
   const model = { ...PLAN_MODELS.find(m => m.id === preference.model)!, reasoning: preference.effort };
   if (!model.id) throw new Error("Unsupported analysis model.");
-  if (mode === "mock") return async (request: ImportRequest) => mockImport(request);
   if (process.env.LOREFOLD_IMPORT_LIVE !== "1") throw new Error("Live imports are not enabled.");
   let provider;
   if (mode === "chatgpt-plan") {
@@ -30,10 +29,15 @@ export async function importProvider(ownerId: string, mode: ImportMode, preferen
     model.id = `openai/${preference.model}`;
     provider = liveProvider({ accountId, gatewayId, token }, fetch, signal);
   }
-  return (request: ImportRequest) => {
-    const call = { model, prompt: importPrompt(request), maxOutput: request.phase === "identity" ? 16000 : 50000,
-      runId: `import-${request.chapter.source}`, chapter: request.chapter.number };
-    reservation(call); // Check a conservative context bound before making an external call.
+  return (prompt: Prompt, maxOutput: number, runId: string, chapter: number) => {
+    const call = { model, prompt, maxOutput, runId, chapter };
+    reservation(call);
     return provider(call);
   };
+}
+export async function importProvider(ownerId: string, mode: ImportMode, preference: AnalysisPreference, signal?: AbortSignal) {
+  if (mode === "mock") return async (request: ImportRequest) => mockImport(request);
+  const send = await liveAnalysisProvider(ownerId, mode, preference, signal);
+  return (request: ImportRequest) => send(importPrompt(request), request.phase === "identity" ? 16000 : 50000,
+    `import-${request.chapter.source}`, request.chapter.number);
 }

@@ -1,3 +1,4 @@
+import { PointMergePage } from "./PointMergePage.js";
 import { ImportProgress, importing } from "./ImportProgress.js";
 import {
   StrictMode,
@@ -451,6 +452,7 @@ function BookPage({
           <span>/</span>
           {workspace.book.title}
         </span>
+        <button className="secondary" onClick={() => navigate(`/books/${encodeURIComponent(bookId)}?view=point-merges${chapter === undefined ? "" : `&chapter=${chapter}`}`)}>Merge points</button>
         <span className="spoiler-pill">
           <ShieldCheck size={14} /> Spoiler-safe through chapter{" "}
           {workspace.cutoff}
@@ -862,7 +864,10 @@ function App() {
         </div>
       </header>
       {error && <ErrorMessage message={error} />}
-      {bookMatch ? (
+      {bookMatch && url.searchParams.get("view") === "point-merges" ? (
+        <PointMergePage key={path} bookId={decodeURIComponent(bookMatch[1])} chapter={chapter}
+          back={() => navigate(`/books/${bookMatch[1]}${chapter === undefined ? "" : `?chapter=${chapter}`}`)} />
+      ) : bookMatch ? (
         <BookPage
           key={bookMatch[1]}
           bookId={decodeURIComponent(bookMatch[1])}
