@@ -243,6 +243,12 @@ keyboard navigation. A deterministic spring layout uses only visible entities an
 relationships from the authorized response. Search and type filters do not fetch
 hidden knowledge. Selecting a circular marker, projected label, or entity-list item shares
 the evidence panel and highlights its immediate connections.
+In the Circles style, depth scales with the graph's extent and the base radius
+grows logarithmically with the number of visible relationships. Perspective
+and a 9–80 CSS pixel diameter limit control the rendered discs and their hit
+areas. Camera-space fog fades distant discs and edges into the map surface.
+The selected disc and its direct connections stay clear.
+
 For dense graphs, the layout spreads its starting positions across the map and
 pulls related entities together before applying spring forces. A screen-space
 mask gives visible markers and higher-degree labels room. Hovering or selecting

@@ -2,11 +2,11 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Line2 } from "three/addons/lines/Line2.js";
-import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { ChevronDown, Palette, Focus, Maximize, Minimize, Minus, Plus, RotateCcw } from "lucide-react";
 import type { Entity, Relationship } from "../../shared/contracts.js";
-import { createMarkerTexture, mapStyles, paintMarker, type MapStyle } from "./graph-markers.js";
+import { circlePixelRadius, circleRadius, createMarkerTexture, mapStyles, paintMarker, type MapStyle } from "./graph-markers.js";
+import { rebuildEdge, placeArrow, placeCircleArrow } from "./graph-edges.js";
 import { LabelSpace } from "./graph-labels.js";
 import { layoutGraph } from "./graph-layout.js";
 
@@ -19,19 +19,30 @@ type NodeView = {
   label: HTMLButtonElement;
   radius: number;
   degree: number;
+  depth: number;
+  pixelRadius: number;
   labelWidth: number;
   labelHeight: number;
   screenX: number;
   screenY: number;
   offsetY: number;
 };
-type EdgeView = { relationship: Relationship; line: Line2; arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>; label: HTMLSpanElement; position: THREE.Vector3 };
+type EdgeView = {
+  relationship: Relationship;
+  target: NodeView;
+  curve: THREE.QuadraticBezierCurve3;
+  lane: number;
+  line: Line2;
+  arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  label: HTMLSpanElement;
+  position: THREE.Vector3;
+};
 
-export function StoryGraph({ entities, relationships, selectedId = null, onSelect }: {
-  entities: Entity[]; relationships: Relationship[]; selectedId?: string | null; onSelect: (id: string) => void;
+export function StoryGraph({ entities, relationships, selectedId = null, initialStyle = "bookplate", onSelect }: {
+  entities: Entity[]; relationships: Relationship[]; selectedId?: string | null; initialStyle?: MapStyle; onSelect: (id: string) => void;
 }) {
   const theme = useTheme();
-  const [style, setStyle] = useState<MapStyle>("bookplate");
+  const [style, setStyle] = useState<MapStyle>(initialStyle);
   const currentStyle = useRef(style);
   currentStyle.current = style;
   const palette = useRef(theme.colors);
@@ -76,6 +87,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     element.append(canvas);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     const scene = new THREE.Scene();
+    const fog = new THREE.Fog(0xffffff, 1, 1000);
+    const fogTint = new THREE.Color();
     const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 3000);
     const controls = new OrbitControls(camera, canvas);
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -100,7 +113,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     let tween: { start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | null = null;
     let hovered: string | null = null;
     const neighbors = new Set<string>();
-    const ringMaterial = new THREE.MeshBasicMaterial({ color: palette.current.mapSelection, transparent: true, opacity: 0.8, depthTest: false });
+    const ringMaterial = new THREE.MeshBasicMaterial({ color: palette.current.mapSelection, transparent: true, opacity: 0.8, depthTest: false, fog: false });
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.035, 8, 64), ringMaterial);
     ring.visible = false;
     ring.renderOrder = 3;
@@ -131,44 +144,36 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       label.setAttribute("aria-label", `Inspect ${entity.label}`);
       label.addEventListener("click", () => selectCallback.current(entity.id));
       labelLayer.append(label);
-      nodes.set(entity.id, { entity, mesh, radius, label, degree: 0, labelWidth: 0, labelHeight: 0, screenX: 0, screenY: 0, offsetY: 0 });
+      nodes.set(entity.id, { entity, mesh, radius, label, degree: 0, depth: 0, pixelRadius: 0, labelWidth: 0, labelHeight: 0, screenX: 0, screenY: 0, offsetY: 0 });
     }
     const pairCounts = new Map<string, number>();
     for (const relationship of relationships) {
       const source = nodes.get(relationship.source), target = nodes.get(relationship.target);
       if (!source || !target) continue;
       source.degree++;
-      target.degree++;
+      if (target !== source) target.degree++;
       const pair = [relationship.source, relationship.target].sort().join("\0");
       const lane = pairCounts.get(pair) ?? 0;
       pairCounts.set(pair, lane + 1);
-      const start = source.mesh.position, end = target.mesh.position;
-      const direction = end.clone().sub(start).normalize();
-      const side = direction.clone().cross(new THREE.Vector3(0, 1, 0));
-      if (side.lengthSq() < 0.01) side.set(1, 0, 0);
-      side.normalize();
-      const midpoint = start.clone().lerp(end, 0.5).addScaledVector(side, 10 + lane * 10);
-      const curve = new THREE.QuadraticBezierCurve3(start.clone(), midpoint, end.clone());
-      const line = new Line2(
-        new LineGeometry().setPositions(curve.getPoints(32).flatMap(point => point.toArray())),
-        new LineMaterial({ transparent: true, depthWrite: false, dashSize: 2, gapSize: 3 }),
-      );
-      line.computeLineDistances();
-      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.9, 4.8, 12), new THREE.MeshBasicMaterial({ color: palette.current.mapEdge, transparent: true, depthWrite: false, opacity: 0.65 }));
-      const t = Math.max(0.5, 1 - (target.radius + 4) / Math.max(start.distanceTo(end), 1));
-      arrow.position.copy(curve.getPoint(t));
-      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangent(t).normalize());
+      const curve = new THREE.QuadraticBezierCurve3(source.mesh.position, new THREE.Vector3(), target.mesh.position);
+      const line = new Line2(undefined, new LineMaterial({ transparent: true, depthWrite: false, fog: true, dashSize: 2, gapSize: 3 }));
+      const arrow = new THREE.Mesh(new THREE.ConeGeometry(1.9, 4.8, 12), new THREE.MeshBasicMaterial({ color: palette.current.mapEdge, transparent: true, depthWrite: false }));
       scene.add(line, arrow);
       const label = document.createElement("span");
       label.className = "map-edge-label";
       label.textContent = relationship.label;
       label.hidden = true;
       labelLayer.append(label);
-      edgeViews.push({ relationship, line, arrow, label, position: curve.getPoint(0.5) });
+      edgeViews.push({ relationship, target, curve, lane, line, arrow, label, position: new THREE.Vector3() });
     }
     const byDegree = [...nodes.values()].sort((a, b) => b.degree - a.degree || a.entity.id.localeCompare(b.entity.id));
     const initialDirection = new THREE.Vector3(0, 0, 1);
     const bounds = new THREE.Box3().setFromPoints([...nodes.values()].map(node => node.mesh.position));
+    // Give the Circles volume comparable spans along its three axes before
+    // accounting for the wide viewport. Preserve the base layout for other styles.
+    const planarSpan = Math.max(bounds.max.y - bounds.min.y, (bounds.max.x - bounds.min.x) / horizontalScale);
+    const depthScale = Math.max(1, planarSpan * 0.96 / Math.max(1, bounds.max.z - bounds.min.z));
+    let deepLayout: boolean | undefined;
     const center = bounds.getCenter(new THREE.Vector3());
     const homePosition = new THREE.Vector3();
     let homeDistance = 0;
@@ -223,7 +228,9 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
         const solid = style === "circles" && nodeId === active;
         const material = node.mesh.material;
         const texture = solid ? null : textures.get(node.entity.kind)!;
-        if (material.map !== texture) {
+        const receivesFog = !solid;
+        if (material.map !== texture || material.fog !== receivesFog) {
+          material.fog = receivesFog;
           material.map = texture;
           material.needsUpdate = true;
         }
@@ -244,6 +251,11 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
           const source = nodes.get(edge.relationship.source)!;
           line.color.lerp(new THREE.Color(colors[source.entity.kind]), 0.7);
         }
+        const applyFog = !(style === "circles" && connected);
+        if (line.fog !== applyFog) {
+          line.fog = edge.arrow.material.fog = applyFog;
+          line.needsUpdate = edge.arrow.material.needsUpdate = true;
+        }
         line.dashed = style === "observatory";
         line.linewidth = style === "wayfinder" ? 3.4 : style === "bookplate" ? 1.5 : 1.2;
         line.opacity = active && !connected ? 0.12 : 1;
@@ -255,6 +267,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       ring.visible = !!node;
       if (node) {
         ring.position.copy(node.mesh.position);
+        ringMaterial.opacity = style === "circles" ? 0.95 : 0.8;
         ringMaterial.color.set(style === "circles" ? colors[node.entity.kind] : colors.mapSelection);
         ring.scale.setScalar(style === "circles" ? node.radius * 1.34 : node.radius + 2.6);
         if (focus) {
@@ -294,6 +307,33 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       node.label.hidden = true;
       return false;
     }
+    function updateMarkers(focalLength: number) {
+      let nearest = Infinity, farthest = 0;
+      for (const node of nodes.values()) {
+        const { mesh } = node;
+        mesh.quaternion.copy(camera.quaternion);
+        node.depth = -viewPosition.copy(mesh.position).applyMatrix4(camera.matrixWorldInverse).z;
+        const pixelsPerUnit = focalLength / Math.max(camera.near, node.depth);
+        const radius = node.radius * (node.entity.id === hovered ? 1.12 : 1);
+        node.pixelRadius = radius * pixelsPerUnit;
+        if (deepLayout && node.depth > camera.near) {
+          node.pixelRadius = circlePixelRadius(node.pixelRadius);
+          mesh.scale.setScalar(node.pixelRadius / pixelsPerUnit);
+          nearest = Math.min(nearest, node.depth);
+          farthest = Math.max(farthest, node.depth);
+        } else {
+          mesh.scale.setScalar(radius);
+        }
+        if (node.entity.id === active && deepLayout) ring.scale.setScalar(mesh.scale.x * 1.34);
+      }
+      if (deepLayout && Number.isFinite(nearest)) {
+        const span = Math.max(100, farthest - nearest);
+        const zoomBias = THREE.MathUtils.clamp((homeDistance - controls.getDistance()) * 0.4, -0.17 * span, 0.45 * span);
+        fog.near = Math.max(camera.near, nearest + 0.10 * span + zoomBias);
+        fog.far = nearest + 1.50 * span + zoomBias;
+        for (const edge of edgeViews) placeCircleArrow(edge.arrow, edge.curve, camera, width, height, focalLength, edge.target.pixelRadius);
+      }
+    }
     function render(now: number) {
       frame = 0;
       if (disposed || lost || document.hidden) return;
@@ -307,7 +347,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       const moving = controls.update();
       camera.updateMatrixWorld();
       ring.quaternion.copy(camera.quaternion);
-      for (const { mesh } of nodes.values()) mesh.quaternion.copy(camera.quaternion);
+      const focalLength = height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+      updateMarkers(focalLength);
       renderer.render(scene, camera);
       if (labelSpace && measureLabels) {
         for (const { label } of nodes.values()) label.hidden = false;
@@ -321,8 +362,12 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       const visible: NodeView[] = [];
       for (const node of byDegree) {
         if (screenPosition(node.mesh.position, node.label)) {
-          viewPosition.copy(node.mesh.position).applyMatrix4(camera.matrixWorldInverse);
-          const pixelRadius = node.mesh.scale.x * height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * -viewPosition.z);
+          const { pixelRadius } = node;
+          if (deepLayout) {
+            const pinned = node.entity.id === active || node.entity.id === hovered || node.label === document.activeElement;
+            const mist = THREE.MathUtils.smoothstep(node.depth, fog.near, fog.far);
+            node.label.style.setProperty("--depth-opacity", String(pinned ? 1 : 1 - 0.55 * mist));
+          }
           const outerRadius = node.entity.id === active && currentStyle.current === "circles"
             ? pixelRadius * ring.scale.x / node.mesh.scale.x : pixelRadius;
           node.offsetY = Math.max(12, outerRadius + 5);
@@ -361,8 +406,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     }
     const fontsChanged = () => { measureLabels = true; invalidate(); };
     document.fonts.addEventListener("loadingdone", fontsChanged);
-    const resize = () => {
-      const atHome = !homeDistance || (!tween && camera.position.distanceToSquared(homePosition) < 1e-6 && controls.target.distanceToSquared(center) < 1e-6);
+    const isHome = () => !homeDistance || (!tween && camera.position.distanceToSquared(homePosition) < 1e-6 && controls.target.distanceToSquared(center) < 1e-6);
+    const resize = (atHome = isHome()) => {
       width = Math.max(1, element.clientWidth);
       height = Math.max(1, element.clientHeight);
       labelSpace = nodes.size > 35 ? new LabelSpace(width, height) : undefined;
@@ -381,11 +426,10 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       }
       invalidate();
     };
-    resize();
     controls.addEventListener("change", invalidate);
     const interrupt = () => { tween = null; };
     controls.addEventListener("start", interrupt);
-    const observer = new ResizeObserver(resize);
+    const observer = new ResizeObserver(() => resize());
     observer.observe(element);
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -411,7 +455,6 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       if (id === hovered) return;
       hovered = id;
       canvas.style.cursor = id ? "pointer" : "grab";
-      for (const [nodeId, node] of nodes) node.mesh.scale.setScalar(node.radius * (nodeId === id ? 1.12 : 1));
       invalidate();
     };
     const pointerUp = (event: PointerEvent) => {
@@ -451,6 +494,46 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     reducedMotion.addEventListener("change", motionChanged);
     labelLayer.style.visibility = "visible";
     const restyle = () => {
+      const circles = currentStyle.current === "circles";
+      if (deepLayout !== circles) {
+        const atHome = isHome();
+        const anchor = active ? nodes.get(active)?.mesh.position : undefined;
+        const follow = anchor && controls.target.distanceToSquared(anchor) < 1e-6;
+        const focusing = anchor && tween && tween.toTarget.distanceToSquared(anchor) < 1e-6;
+        const resetting = tween && tween.to.distanceToSquared(homePosition) < 1e-6 && tween.toTarget.distanceToSquared(center) < 1e-6;
+        const oldZ = anchor?.z ?? 0;
+        deepLayout = circles;
+        scene.fog = circles ? fog : null;
+        bounds.makeEmpty();
+        for (const node of nodes.values()) {
+          node.mesh.position.z = positions.get(node.entity.id)!.z * (circles ? depthScale : 1);
+          node.radius = circles ? circleRadius(node.degree) : node.entity.kind === "character" ? 14 : 12.5;
+          bounds.expandByPoint(node.mesh.position);
+        }
+        for (const edge of edgeViews) {
+          rebuildEdge(edge.line, edge.curve, edge.lane);
+          edge.curve.getPoint(0.5, edge.position);
+          placeArrow(edge.arrow, edge.curve, edge.target.radius);
+        }
+        bounds.getCenter(center);
+        if (anchor && follow) {
+          controls.target.z += anchor.z - oldZ;
+          camera.position.z += anchor.z - oldZ;
+        }
+        if (anchor && focusing && tween) {
+          tween.to.z += anchor.z - oldZ;
+          tween.toTarget.z += anchor.z - oldZ;
+        }
+        resize(atHome);
+        if (resetting && tween) {
+          tween.to.copy(homePosition);
+          tween.toTarget.copy(center);
+        }
+      }
+      const colors = palette.current;
+      // Match the map's CSS color-mix(in srgb) for customized themes too.
+      fogTint.set(colors.mapBackground).convertLinearToSRGB();
+      fog.color.set(colors.surface).convertLinearToSRGB().lerp(fogTint, 0.28).convertSRGBToLinear();
       for (const [kind, texture] of textures) paintMarker(texture, currentStyle.current, kind, palette.current);
       measureLabels = true;
       highlight(active);

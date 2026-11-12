@@ -6,6 +6,15 @@ import { contrastRatio } from "../../shared/theme-colors.js";
 export const mapStyles = { bookplate: "Bookplate", observatory: "Observatory", circles: "Circles", wayfinder: "Wayfinder" } as const;
 export type MapStyle = keyof typeof mapStyles;
 
+// Degree sets the radius in world space. Perspective determines the screen
+// radius until a marker reaches either legibility limit (in CSS pixels).
+export function circleRadius(degree: number) {
+  return Math.min(36, 6.5 + 7 * Math.log2(1 + degree));
+}
+export function circlePixelRadius(projectedRadius: number) {
+  return Math.max(4.5, Math.min(40, projectedRadius));
+}
+
 // Miniature engravings inside each bookplate seal, in a 64 × 64 design space.
 const engravings: Record<EntityKind, string> = {
   character: "M19 46 Q20 39 28 37 L28 33 Q24 31 24 25 Q24 17 32 17 Q39 17 39 24 L42 28 L39 29 L39 33 Q38 35 34 35 L35 38 Q43 39 45 46 Z M25 24 Q29 24 31 20 Q33 24 38 25 M24 40 L30 44 L35 38 M27 46 L30 44 L34 46",
@@ -73,7 +82,7 @@ export function paintMarker(texture: CanvasTexture, style: MapStyle, kind: Entit
     ctx.fill(new Path2D("M32 22 Q33 31 41 32 Q33 33 32 42 Q31 33 23 32 Q31 31 32 22 Z"));
   } else if (style === "circles") {
     circle(32, 32, 32, color);
-    circle(32, 32, 28.5, `color-mix(in srgb, ${color} 25%, ${colors.surface})`);
+    circle(32, 32, 28.5, `color-mix(in srgb, ${color} 52%, ${colors.surface})`);
   } else {
     const sign = contrastRatio(color, "#121827") > contrastRatio(color, "#ffffff") ? "#121827" : "#ffffff";
     circle(32, 32, 32, colors.text);

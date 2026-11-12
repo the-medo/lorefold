@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Entity, Relationship } from "../shared/contracts.js";
+import { circlePixelRadius, circleRadius } from "../frontend/src/graph-markers.js";
 import { layoutGraph } from "../frontend/src/graph-layout.js";
 
 const entities: Entity[] = Array.from({ length: 12 }, (_, i) => ({
@@ -34,4 +35,15 @@ test("filtered graphs never create or attract hidden endpoints", () => {
   assert.equal(positions.has("hidden"), false);
   assert.deepEqual(layoutGraph([], relationships), new Map());
   assert.deepEqual(layoutGraph([entities[0]], relationships), new Map([[entities[0].id, { x: 0, y: 0, z: 0 }]]));
+});
+
+test("circle radii grow with connections and perspective within screen limits", () => {
+  assert.ok(circleRadius(0) > 0);
+  assert.ok(circleRadius(1) < circleRadius(5));
+  assert.ok(circleRadius(5) < circleRadius(15));
+  assert.equal(circleRadius(1000), 36);
+  const radius = circleRadius(3);
+  assert.ok(circlePixelRadius(radius / 2) < circlePixelRadius(radius));
+  assert.equal(circlePixelRadius(radius / 1000), 4.5);
+  assert.equal(circlePixelRadius(radius * 1000), 40);
 });

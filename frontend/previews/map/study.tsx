@@ -51,7 +51,7 @@ function Study() {
         {graph.entities.map(entity => <option key={entity.id} value={entity.id}>{entity.label}</option>)}
       </select>
     </header>
-    <StoryGraph {...graph} selectedId={selection} onSelect={setSelection} />
+    <StoryGraph initialStyle="circles" {...graph} selectedId={selection} onSelect={setSelection} />
   </>;
 }
 

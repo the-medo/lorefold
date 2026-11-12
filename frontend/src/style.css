@@ -2014,6 +2014,7 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
   --map-paper: color-mix(in srgb, var(--surface) 72%, var(--map-background));
 }
 .graph-three[data-map-style="circles"] .map-node-label {
+  opacity: var(--depth-opacity, 1);
   font-weight: 500;
   border-radius: 4px;
 }
@@ -2022,3 +2023,5 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
   color: var(--surface);
   font-weight: 700;
 }
+
+.graph-three[data-map-style="circles"] .map-node-label.is-muted { opacity: calc(0.4 * var(--depth-opacity, 1)); }

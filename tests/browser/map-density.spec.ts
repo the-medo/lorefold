@@ -8,7 +8,7 @@ test("the 200-node study keeps names legible and every entity selectable", async
   const labels = map.locator(".map-node-label");
   await expect(labels).toHaveCount(200);
   await expect(picker.getByRole("option")).toHaveCount(201);
-  await map.getByLabel("Map style").selectOption("circles");
+  await expect(map.getByLabel("Map style")).toHaveValue("circles");
   const visible = map.locator(".map-node-label:visible");
   await expect.poll(() => visible.count()).toBeGreaterThan(0);
   expect(await visible.count()).toBeLessThan(200);
@@ -19,11 +19,22 @@ test("the 200-node study keeps names legible and every entity selectable", async
     }
   }
 
+  const fogLevels = () => labels.evaluateAll(elements => elements.map(element =>
+    Number((element as HTMLElement).style.getPropertyValue("--depth-opacity"))));
+  const beforeOrbit = await fogLevels();
+  expect(Math.max(...beforeOrbit)).toBe(1);
+  expect(Math.min(...beforeOrbit)).toBeLessThan(0.8);
+  const canvas = map.getByRole("img", { name: "3D story relationship map" });
+  for (let i = 0; i < 4; i++) await canvas.press("ArrowRight");
+  await expect.poll(async () => (await fogLevels()).some((level, i) => Math.abs(level - beforeOrbit[i]) > 0.15)).toBe(true);
+  await map.getByRole("button", { name: "Reset map view" }).click();
+
   const hiddenName = await map.locator(".map-node-label[hidden]").first().textContent();
   await picker.selectOption({ label: hiddenName! });
   const selected = map.getByRole("button", { name: `Inspect ${hiddenName}`, exact: true });
   await expect(selected).toBeVisible();
   await expect(selected).toHaveAttribute("aria-pressed", "true");
+  await expect(selected).toHaveCSS("opacity", "1");
   await map.getByLabel("Map style").selectOption("bookplate");
   await expect(selected).toHaveAttribute("aria-pressed", "true");
   await picker.selectOption("");
