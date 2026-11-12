@@ -243,6 +243,10 @@ keyboard navigation. A deterministic spring layout uses only visible entities an
 relationships from the authorized response. Search and type filters do not fetch
 hidden knowledge. Selecting a circular marker, projected label, or entity-list item shares
 the evidence panel and highlights its immediate connections.
+For dense graphs, the layout spreads its starting positions across the map and
+pulls related entities together before applying spring forces. A screen-space
+mask gives visible markers and higher-degree labels room. Hovering or selecting
+a marker prioritizes its name, and the entity list keeps every visible entity selectable.
 
 The renderer loads on demand with the Story map tab. It draws only when the camera,
 selection, or viewport changes, caps device pixel ratio at two, honors reduced motion,

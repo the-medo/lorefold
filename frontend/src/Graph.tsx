@@ -7,12 +7,24 @@ import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { ChevronDown, Palette, Focus, Maximize, Minimize, Minus, Plus, RotateCcw } from "lucide-react";
 import type { Entity, Relationship } from "../../shared/contracts.js";
 import { createMarkerTexture, mapStyles, paintMarker, type MapStyle } from "./graph-markers.js";
+import { LabelSpace } from "./graph-labels.js";
 import { layoutGraph } from "./graph-layout.js";
 
 import { useTheme } from "./theme.js";
 
 type MapActions = { zoom: (factor: number) => void; reset: () => void; select: (id: string | null, focus?: boolean) => void; restyle: () => void };
-type NodeView = { entity: Entity; mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>; label: HTMLButtonElement; radius: number };
+type NodeView = {
+  entity: Entity;
+  mesh: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
+  label: HTMLButtonElement;
+  radius: number;
+  degree: number;
+  labelWidth: number;
+  labelHeight: number;
+  screenX: number;
+  screenY: number;
+  offsetY: number;
+};
 type EdgeView = { relationship: Relationship; line: Line2; arrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>; label: HTMLSpanElement; position: THREE.Vector3 };
 
 export function StoryGraph({ entities, relationships, selectedId = null, onSelect }: {
@@ -82,6 +94,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     const meshes: THREE.Object3D[] = [];
     const edgeViews: EdgeView[] = [];
     let width = 1, height = 1, frame = 0, disposed = false, lost = false;
+    let labelSpace: LabelSpace | undefined;
+    let measureLabels = true;
     let active = selected.current;
     let tween: { start: number; from: THREE.Vector3; to: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3 } | null = null;
     let hovered: string | null = null;
@@ -117,12 +131,14 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       label.setAttribute("aria-label", `Inspect ${entity.label}`);
       label.addEventListener("click", () => selectCallback.current(entity.id));
       labelLayer.append(label);
-      nodes.set(entity.id, { entity, mesh, radius, label });
+      nodes.set(entity.id, { entity, mesh, radius, label, degree: 0, labelWidth: 0, labelHeight: 0, screenX: 0, screenY: 0, offsetY: 0 });
     }
     const pairCounts = new Map<string, number>();
     for (const relationship of relationships) {
       const source = nodes.get(relationship.source), target = nodes.get(relationship.target);
       if (!source || !target) continue;
+      source.degree++;
+      target.degree++;
       const pair = [relationship.source, relationship.target].sort().join("\0");
       const lane = pairCounts.get(pair) ?? 0;
       pairCounts.set(pair, lane + 1);
@@ -150,6 +166,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       labelLayer.append(label);
       edgeViews.push({ relationship, line, arrow, label, position: curve.getPoint(0.5) });
     }
+    const byDegree = [...nodes.values()].sort((a, b) => b.degree - a.degree || a.entity.id.localeCompare(b.entity.id));
     const initialDirection = new THREE.Vector3(0, 0, 1);
     const bounds = new THREE.Box3().setFromPoints([...nodes.values()].map(node => node.mesh.position));
     const center = bounds.getCenter(new THREE.Vector3());
@@ -200,7 +217,17 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
           if (edge.relationship.target === active) neighbors.add(edge.relationship.source);
         }
       }
+      const style = currentStyle.current;
+      const colors = palette.current;
       for (const [nodeId, node] of nodes) {
+        const solid = style === "circles" && nodeId === active;
+        const material = node.mesh.material;
+        const texture = solid ? null : textures.get(node.entity.kind)!;
+        if (material.map !== texture) {
+          material.map = texture;
+          material.needsUpdate = true;
+        }
+        material.color.set(solid ? colors[node.entity.kind] : 0xffffff);
         const relevant = !active || neighbors.has(nodeId);
         node.mesh.material.opacity = relevant ? 1 : 0.22;
         node.mesh.material.depthWrite = relevant;
@@ -208,8 +235,6 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
         node.label.classList.toggle("is-selected", nodeId === active);
         node.label.setAttribute("aria-pressed", String(nodeId === active));
       }
-      const style = currentStyle.current;
-      const colors = palette.current;
       for (const edge of edgeViews) {
         const connected = edge.relationship.source === active || edge.relationship.target === active;
         const line = edge.line.material;
@@ -230,7 +255,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       ring.visible = !!node;
       if (node) {
         ring.position.copy(node.mesh.position);
-        ring.scale.setScalar(node.radius + 2.6);
+        ringMaterial.color.set(style === "circles" ? colors[node.entity.kind] : colors.mapSelection);
+        ring.scale.setScalar(style === "circles" ? node.radius * 1.34 : node.radius + 2.6);
         if (focus) {
           const direction = camera.position.clone().sub(controls.target).normalize();
           // Keep the selected node's neighborhood in view rather than diving into the marker.
@@ -252,6 +278,22 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       }
       return visible;
     }
+    function placeLabel(space: LabelSpace, node: NodeView, pinned = false) {
+      const left = THREE.MathUtils.clamp(node.screenX - node.labelWidth / 2, 0, Math.max(0, width - node.labelWidth));
+      const offsets = [node.offsetY, -node.offsetY - node.labelHeight];
+      for (const offset of offsets) {
+        const top = node.screenY + offset;
+        if (top < 0 || top + node.labelHeight > height) continue;
+        if (space.reserve(left - 2, top - 1, node.labelWidth + 4, node.labelHeight + 2, pinned)) {
+          node.label.style.left = `${left + node.labelWidth / 2}px`;
+          node.label.style.transform = `translate(-50%, ${offset}px)`;
+          node.label.hidden = false;
+          return true;
+        }
+      }
+      node.label.hidden = true;
+      return false;
+    }
     function render(now: number) {
       frame = 0;
       if (disposed || lost || document.hidden) return;
@@ -267,11 +309,48 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       ring.quaternion.copy(camera.quaternion);
       for (const { mesh } of nodes.values()) mesh.quaternion.copy(camera.quaternion);
       renderer.render(scene, camera);
-      for (const node of nodes.values()) {
+      if (labelSpace && measureLabels) {
+        for (const { label } of nodes.values()) label.hidden = false;
+        for (const node of nodes.values()) {
+          node.labelWidth = node.label.offsetWidth;
+          node.labelHeight = node.label.offsetHeight;
+        }
+        measureLabels = false;
+      }
+      labelSpace?.clear();
+      const visible: NodeView[] = [];
+      for (const node of byDegree) {
         if (screenPosition(node.mesh.position, node.label)) {
           viewPosition.copy(node.mesh.position).applyMatrix4(camera.matrixWorldInverse);
           const pixelRadius = node.mesh.scale.x * height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * -viewPosition.z);
-          node.label.style.transform = `translate(-50%, ${Math.max(12, pixelRadius + 5)}px)`;
+          const outerRadius = node.entity.id === active && currentStyle.current === "circles"
+            ? pixelRadius * ring.scale.x / node.mesh.scale.x : pixelRadius;
+          node.offsetY = Math.max(12, outerRadius + 5);
+          if (labelSpace) {
+            node.screenX = (projected.x + 1) * width / 2;
+            node.screenY = (1 - projected.y) * height / 2;
+            labelSpace.reserve(node.screenX - pixelRadius, node.screenY - pixelRadius, 2 * pixelRadius, 2 * pixelRadius, true);
+            visible.push(node);
+          } else {
+            node.label.style.transform = `translate(-50%, ${node.offsetY}px)`;
+          }
+        }
+      }
+      if (labelSpace) {
+        // Show a few landmarks in the overview. Zooming makes room for more
+        // names, and selecting an entity gives its neighborhood priority.
+        const budget = Math.max(4, Math.ceil(width * height / 34000 * homeDistance / controls.getDistance()));
+        let shown = 0;
+        for (const node of visible) {
+          if (node.entity.id === active || node.entity.id === hovered || node.label === document.activeElement) {
+            placeLabel(labelSpace, node, true);
+          } else {
+            node.label.hidden = true;
+          }
+        }
+        for (const node of visible) {
+          if (shown >= budget) break;
+          if (node.label.hidden && (!active || neighbors.has(node.entity.id)) && placeLabel(labelSpace, node)) shown++;
         }
       }
       for (const edge of edgeViews) {
@@ -280,10 +359,14 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       }
       if (moving || tween) invalidate();
     }
+    const fontsChanged = () => { measureLabels = true; invalidate(); };
+    document.fonts.addEventListener("loadingdone", fontsChanged);
     const resize = () => {
       const atHome = !homeDistance || (!tween && camera.position.distanceToSquared(homePosition) < 1e-6 && controls.target.distanceToSquared(center) < 1e-6);
       width = Math.max(1, element.clientWidth);
       height = Math.max(1, element.clientHeight);
+      labelSpace = nodes.size > 35 ? new LabelSpace(width, height) : undefined;
+      measureLabels = true;
       homeDistance = fitDistance();
       homePosition.copy(center).addScaledVector(initialDirection, homeDistance);
       controls.maxDistance = Math.max(1400, homeDistance * 2);
@@ -369,7 +452,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     labelLayer.style.visibility = "visible";
     const restyle = () => {
       for (const [kind, texture] of textures) paintMarker(texture, currentStyle.current, kind, palette.current);
-      ringMaterial.color.set(palette.current.mapSelection);
+      measureLabels = true;
       highlight(active);
     };
     actions.current = { zoom, reset, select: highlight, restyle };
@@ -378,6 +461,7 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
       disposed = true;
       cancelAnimationFrame(frame);
       observer.disconnect();
+      document.fonts.removeEventListener("loadingdone", fontsChanged);
       controls.removeEventListener("change", invalidate);
       controls.removeEventListener("start", interrupt);
       controls.dispose();
@@ -401,8 +485,8 @@ export function StoryGraph({ entities, relationships, selectedId = null, onSelec
     };
   }, [entities, relationships, retry, hintId]);
 
-  // Recolor existing materials without resetting orbit, selection, or GPU resources.
-  useLayoutEffect(() => { actions.current?.restyle(); }, [theme.colors, style]);
+  // Apply palette and label typography changes in the existing scene.
+  useLayoutEffect(() => { actions.current?.restyle(); }, [theme, style]);
 
   useLayoutEffect(() => {
     actions.current?.select(selectedId, !!selectedId);

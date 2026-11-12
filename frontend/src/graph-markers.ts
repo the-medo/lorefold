@@ -3,7 +3,7 @@ import type { EntityKind } from "../../shared/contracts.js";
 import type { ThemeConfig } from "../../shared/themes.js";
 import { contrastRatio } from "../../shared/theme-colors.js";
 
-export const mapStyles = { bookplate: "Bookplate", observatory: "Observatory", wayfinder: "Wayfinder" } as const;
+export const mapStyles = { bookplate: "Bookplate", observatory: "Observatory", circles: "Circles", wayfinder: "Wayfinder" } as const;
 export type MapStyle = keyof typeof mapStyles;
 
 // Miniature engravings inside each bookplate seal, in a 64 × 64 design space.
@@ -71,6 +71,9 @@ export function paintMarker(texture: CanvasTexture, style: MapStyle, kind: Entit
     circle(32, 32, 12.6, color);
     ctx.fillStyle = "#fff";
     ctx.fill(new Path2D("M32 22 Q33 31 41 32 Q33 33 32 42 Q31 33 23 32 Q31 31 32 22 Z"));
+  } else if (style === "circles") {
+    circle(32, 32, 32, color);
+    circle(32, 32, 28.5, `color-mix(in srgb, ${color} 25%, ${colors.surface})`);
   } else {
     const sign = contrastRatio(color, "#121827") > contrastRatio(color, "#ffffff") ? "#121827" : "#ffffff";
     circle(32, 32, 32, colors.text);

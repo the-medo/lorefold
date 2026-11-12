@@ -251,7 +251,7 @@ test("touch orbit and pinch zoom work with reduced motion on mobile", async ({ p
   const orbited = await position();
   const picker = page.getByRole("combobox", { name: "Map style" });
   const map = page.getByRole("region", { name: "Interactive 3D story map" });
-  for (const style of ["observatory", "wayfinder", "bookplate"]) {
+  for (const style of ["observatory", "circles", "wayfinder", "bookplate"]) {
     await picker.selectOption(style);
     await expect(map).toHaveAttribute("data-map-style", style);
     expect(await position()).toEqual(orbited);

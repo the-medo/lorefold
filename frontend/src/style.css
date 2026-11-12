@@ -2009,3 +2009,16 @@ h1, h2, h3, .collection-toolbar h1, .universe-toolbar h1 { font-family: var(--fo
 @media (max-width: 700px) {
   .graph-three[data-map-style="bookplate"] .map-node-label { font-size: var(--ui-size); }
 }
+
+.graph-three[data-map-style="circles"] {
+  --map-paper: color-mix(in srgb, var(--surface) 72%, var(--map-background));
+}
+.graph-three[data-map-style="circles"] .map-node-label {
+  font-weight: 500;
+  border-radius: 4px;
+}
+.graph-three[data-map-style="circles"] .map-node-label.is-selected {
+  background: var(--text);
+  color: var(--surface);
+  font-weight: 700;
+}

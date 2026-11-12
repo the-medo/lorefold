@@ -23,15 +23,35 @@ export function layoutGraph(entities: Entity[], relationships: Relationship[]): 
   for (const list of neighbors) list.sort((a, b) => neighbors[b].length - neighbors[a].length || b - a);
   const points: Point3D[] = [];
   const radius = 40 * Math.sqrt(count);
+  // When the rim gets crowded, wind the same traversal out from the center.
+  const crowdedRim = 2 * Math.PI * radius / count < 48;
   let next = 0;
   for (let root = 0; root < count; root++) {
     const stack = [root];
     while (stack.length) {
       const index = stack.pop()!;
       if (points[index]) continue;
-      const angle = 2 * Math.PI * next++ / count;
-      points[index] = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, z: Math.sin(index * 2.4 + 0.8) * 38 };
+      const step = Math.sqrt(next + 0.5);
+      const angle = crowdedRim ? 3.55 * step : 2 * Math.PI * next / count;
+      const distance = crowdedRim ? 48 * step : radius;
+      next++;
+      points[index] = { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, z: Math.sin(index * 2.4 + 0.8) * 38 };
       for (const neighbor of neighbors[index]) if (!points[neighbor]) stack.push(neighbor);
+    }
+  }
+  if (crowdedRim) {
+    // Move each branch toward its neighbors before the bounded spring pass.
+    // Otherwise a long edge can spend the entire pass pulling across the seed.
+    for (let pass = 0; pass < 3; pass++) {
+      const previous = points.slice();
+      for (let i = 0; i < count; i++) {
+        const adjacent = neighbors[i];
+        if (!adjacent.length) continue;
+        let x = 0, y = 0;
+        for (const j of adjacent) { x += previous[j].x; y += previous[j].y; }
+        const p = previous[i];
+        points[i] = { x: (p.x + x / adjacent.length) / 2, y: (p.y + y / adjacent.length) / 2, z: p.z };
+      }
     }
   }
   // Bound the work for larger imported graphs. This small initial graph does not

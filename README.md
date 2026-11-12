@@ -109,6 +109,8 @@ or use two fingers to pan. Select a circular marker or label for its evidence an
 connections; reset, focus, and fullscreen controls are in the bottom corner. Arrow
 keys orbit a focused map; plus/minus zoom and Home resets. The entity list remains
 available when WebGL is unavailable. Reduced-motion settings disable camera transitions.
+Use the map style picker to compare markers. The development preview at
+`/previews/map/` shows the same renderer with 200 synthetic entities and 230 connections.
 
 The selected Lorefold icon is **Folded worlds**, available at `/brand/lorefold.svg`.
 The five original SVG options and a ZIP download are at `/brand/icon-options/index.html`.

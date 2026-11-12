@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="/brand/lorefold.svg" />
+  <title>200-node map study · Lorefold</title>
+  <style>
+    .map-study { max-width: 1600px; margin: auto; padding: clamp(12px, 2.5vw, 36px); }
+    .map-study header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .map-study h1 { font-size: clamp(24px, 3vw, 36px); }
+    .map-study header p { color: var(--muted); }
+    .map-study header select { max-width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); }
+    .map-study .graph-three:not(:fullscreen) { height: clamp(380px, 78dvh, 940px); }
+  </style>
+</head>
+<body><main id="root" class="map-study"></main><script type="module" src="./study.tsx"></script></body>
+</html>
